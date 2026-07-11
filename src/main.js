@@ -227,6 +227,7 @@ function loadPuzzle(puzzle) {
   renderer.selectFirstCell();
   activePuzzleId = puzzle.id;
   clearAllSaveSlots();
+  refreshSaveSlots(); // 세이브 패널이 이미 열려있어도 즉시 "비어있음"으로 반영
   closePanel(puzzlePanel);
 }
 
