@@ -67,6 +67,28 @@ export class Board {
     return visible.every(c => c.value !== null && !c.isConflict);
   }
 
+  /** 저장용 스냅샷 — 보이는 칸의 값/메모/초기제공 여부만 직렬화 */
+  serialize() {
+    return this.getVisibleCells().map(c => ({
+      row: c.row,
+      col: c.col,
+      value: c.value,
+      isGiven: c.isGiven,
+      candidates: [...c.candidates],
+    }));
+  }
+
+  /** serialize()로 만든 데이터를 그대로 복원 */
+  loadSerialized(data) {
+    for (const { row, col, value, isGiven, candidates } of data) {
+      const cell = this.getCell(row, col);
+      if (!cell) continue;
+      cell.value = value;
+      cell.isGiven = isGiven;
+      cell.candidates = new Set(candidates);
+    }
+  }
+
   getPeers(row, col) {
     const peerSet = new Set();
     for (const struct of this.structures) {

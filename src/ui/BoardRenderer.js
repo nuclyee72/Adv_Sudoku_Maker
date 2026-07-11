@@ -357,6 +357,25 @@ export class BoardRenderer {
     this._undoStack.push(changes);
   }
 
+  /** 퍼즐 교체 등으로 board 인스턴스 자체를 새로 갈아끼울 때 사용 — 처음부터 다시 그림 */
+  loadBoard(newBoard) {
+    this.board = newBoard;
+    this.selectedCell = null;
+    this._undoStack = [];
+    this.render();
+  }
+
+  /** board 데이터가 외부에서 통째로 교체됐을 때(불러오기 등) 다시 그림 */
+  refresh() {
+    this._undoStack = []; // 불러온 상태를 새 기준점으로 삼음
+    Validator.validate(this.board);
+    if (this.selectedCell) this.selectCell(this.selectedCell.row, this.selectedCell.col);
+    else this._updateAll();
+    if (this.onCellSelect && this.selectedCell) {
+      this.onCellSelect(this.selectedCell.row, this.selectedCell.col);
+    }
+  }
+
   /** 실행 취소 (Ctrl+Z) — 되돌릴 수 있는 횟수는 메모리가 허용하는 한 무제한 */
   undo() {
     const entry = this._undoStack.pop();

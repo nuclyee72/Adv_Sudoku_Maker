@@ -17,12 +17,19 @@
 
   <!-- 숫자 입력 키패드 패널 -->
   <div id="keypad-panel" class="keypad-panel">
-    <div id="kp-extra-menu" class="kp-extra-menu">
-      <div class="kp-extra-inner">
-        <p class="kp-extra-placeholder">추가 메뉴 (준비 중)</p>
+    <!-- 토글 탭 + 추가 메뉴: 항상 하나의 단위로 묶여 왼쪽으로 펼쳐짐 (토글은 항상 가장 바깥쪽) -->
+    <div id="kp-drawer" class="kp-drawer">
+      <button id="kp-toggle" class="kp-toggle" type="button" aria-label="추가 메뉴 열기/닫기">‹</button>
+      <div id="kp-extra-menu" class="kp-extra-menu">
+        <div class="kp-extra-content">
+          <div id="kp-extra-scroll" class="kp-extra-scroll">
+            <button id="btn-open-puzzle" class="kp-extra-btn" type="button">퍼즐 선택</button>
+            <button id="btn-open-save" class="kp-extra-btn" type="button">저장 / 불러오기</button>
+          </div>
+          <button id="btn-open-help" class="kp-extra-btn kp-extra-help" type="button">도움말</button>
+        </div>
       </div>
     </div>
-    <button id="kp-toggle" class="kp-toggle" type="button" aria-label="추가 메뉴 열기/닫기">‹</button>
     <div id="kp-panel-body" class="kp-panel-body">
       <div class="kp-body">
         <div id="keypad-grid" class="kp-grid"></div>
@@ -35,15 +42,70 @@
   <!-- 완성 토스트 -->
   <div id="toast" class="toast">🎉 퍼즐 완성!</div>
 
-  <!-- 모두 지우기 확인 모달 -->
+  <!-- 확인 모달 (모두 지우기 / 불러오기 / 퍼즐 변경 등 공용) -->
   <div id="confirm-modal" class="modal-overlay">
     <div class="modal-card">
-      <p class="modal-text">입력한 숫자를 모두 지울까요?<br/>초기 제공 숫자는 유지됩니다.</p>
+      <p id="confirm-text" class="modal-text"></p>
       <div class="modal-actions">
         <button id="confirm-cancel" class="modal-btn modal-btn-cancel" type="button">취소</button>
-        <button id="confirm-ok" class="modal-btn modal-btn-danger" type="button">모두 지우기</button>
+        <button id="confirm-ok" class="modal-btn modal-btn-danger" type="button">확인</button>
       </div>
     </div>
+  </div>
+
+  <!-- 저장 / 불러오기 패널 -->
+  <div id="save-panel" class="floating-panel">
+    <button id="save-close" class="floating-panel-close" type="button" aria-label="닫기">✕</button>
+    <h2 class="floating-panel-title">저장 / 불러오기</h2>
+    <div class="save-slots">
+      <div class="save-slot">
+        <span class="save-slot-label">슬롯 1</span>
+        <div class="save-slot-actions">
+          <button class="save-btn" data-slot="1" type="button">저장</button>
+          <button class="load-btn" data-slot="1" type="button">불러오기</button>
+        </div>
+      </div>
+      <div class="save-slot">
+        <span class="save-slot-label">슬롯 2</span>
+        <div class="save-slot-actions">
+          <button class="save-btn" data-slot="2" type="button">저장</button>
+          <button class="load-btn" data-slot="2" type="button">불러오기</button>
+        </div>
+      </div>
+      <div class="save-slot">
+        <span class="save-slot-label">슬롯 3</span>
+        <div class="save-slot-actions">
+          <button class="save-btn" data-slot="3" type="button">저장</button>
+          <button class="load-btn" data-slot="3" type="button">불러오기</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 퍼즐 선택 패널 -->
+  <div id="puzzle-panel" class="floating-panel">
+    <button id="puzzle-close" class="floating-panel-close" type="button" aria-label="닫기">✕</button>
+    <h2 class="floating-panel-title">퍼즐 선택</h2>
+    <div id="puzzle-list" class="puzzle-list"></div>
+  </div>
+
+  <!-- 도움말 패널 -->
+  <div id="help-panel" class="floating-panel">
+    <button id="help-close" class="floating-panel-close" type="button" aria-label="닫기">✕</button>
+    <h2 class="floating-panel-title">키보드 단축키</h2>
+    <ul class="help-list">
+      <li><span class="help-keys"><kbd>방향키</kbd></span><span class="help-desc">선택 칸 이동</span></li>
+      <li><span class="help-keys"><kbd>1</kbd>–<kbd>9</kbd></span><span class="help-desc">숫자 입력 (메모 모드면 메모)</span></li>
+      <li><span class="help-keys"><kbd>Delete</kbd>/<kbd>Backspace</kbd></span><span class="help-desc">선택 칸 지우기</span></li>
+      <li><span class="help-keys"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span><span class="help-desc">게임판 이동</span></li>
+      <li><span class="help-keys"><kbd>마우스 휠</kbd></span><span class="help-desc">커서 기준 확대/축소</span></li>
+      <li><span class="help-keys"><kbd>마우스 드래그</kbd></span><span class="help-desc">게임판 · 패널 이동</span></li>
+      <li><span class="help-keys"><kbd>Lshift</kbd></span><span class="help-desc">메모 모드 토글</span></li>
+      <li><span class="help-keys"><kbd>Ctrl</kbd>+<kbd>Z</kbd></span><span class="help-desc">실행 취소</span></li>
+      <li><span class="help-keys"><kbd>Ctrl</kbd>+<kbd>S</kbd></span><span class="help-desc">저장/불러오기 열기</span></li>
+      <li><span class="help-keys"><kbd>H</kbd></span><span class="help-desc">도움말 열기</span></li>
+      <li><span class="help-keys"><kbd>Esc</kbd></span><span class="help-desc">열린 창 닫기</span></li>
+    </ul>
   </div>
 
   <script type="module" src="src/main.js"></script>

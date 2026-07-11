@@ -17,6 +17,8 @@ const structMap = new Map();
 });
 
 export const PUZZLE_CROSS = {
+  id: 'cross-001',
+  name: '십자형 스도쿠 (4판)',
   structures: Array.from(structMap.values()),
   givens: crossGivens
 };

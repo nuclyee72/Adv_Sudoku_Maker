@@ -14,6 +14,8 @@ const structMap = new Map();
 });
 
 export const PUZZLE_OVERLAPPING = {
+  id: 'overlap-001',
+  name: '겹침 스도쿠 (2판)',
   structures: Array.from(structMap.values()),
   givens: [
     // 겹치는 부분 (예시 데이터)

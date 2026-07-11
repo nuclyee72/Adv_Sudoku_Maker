@@ -2,10 +2,11 @@
  * Keypad.js — 1~9 숫자 + 메모/지우기 버튼 키패드
  */
 export class Keypad {
-  constructor(containerEl, onInput, onNoteToggle) {
+  constructor(containerEl, onInput, onNoteToggle, onUndo) {
     this.container = containerEl;
     this.onInput = onInput;
     this.onNoteToggle = onNoteToggle;
+    this.onUndo = onUndo;
     this._render();
   }
 
@@ -49,6 +50,18 @@ export class Keypad {
       this._flash(erase);
     });
     actions.appendChild(erase);
+
+    // 실행 취소 버튼 (꺾인 화살표)
+    const undo = document.createElement('button');
+    undo.className = 'kp-btn kp-undo';
+    undo.id = 'kp-undo';
+    undo.textContent = '↩';
+    undo.setAttribute('aria-label', '실행 취소');
+    undo.addEventListener('click', () => {
+      this.onUndo();
+      this._flash(undo);
+    });
+    actions.appendChild(undo);
 
     this.container.appendChild(actions);
   }
