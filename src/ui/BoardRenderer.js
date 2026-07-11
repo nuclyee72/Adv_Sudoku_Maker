@@ -57,14 +57,16 @@ export class BoardRenderer {
     while (this.svg.firstChild) this.svg.removeChild(this.svg.firstChild);
     this._els.clear();
 
-    this._gConflicts = this._g('g-conflicts');
+    this._gConflicts    = this._g('g-conflicts');
+    this._gSnakeOutline = null; // _updateSnakePaths()에서 처음 그릴 때 새로 생성됨
+    this._gSnakePath    = null; // 〃
 
     this._drawCells();
     this._drawThinLines();
     this._drawBoxBorders();
     this._drawGridBorders();
 
-    // 에러 테두리를 위로, 부등호/연속 표시는 그보다 더 위로 오도록 순서대로 삽입
+    // 에러 테두리 → 부등호/연속 표시 순으로 위에 쌓이도록 삽입
     this.svg.appendChild(this._gConflicts);
     this._drawInequalities();
     this._drawConsecutives();
@@ -243,10 +245,148 @@ export class BoardRenderer {
 
   // ── 상태 업데이트 ──
   _updateAll() {
+    this._updateSnakePaths();
     for (const [key] of this._els) {
       if (key === 'g-conflicts') continue;
       const [r, c] = key.split(',').map(Number);
       this._updateCell(r, c);
+    }
+  }
+
+  /** 스네이크 구조마다 유효 경로를 다시 계산하고, 외곽선 + 경로 연결 아이콘을 갱신 */
+  _updateSnakePaths() {
+    // 스네이크가 아닌 다른 구조체(줄/박스/부등호/연속 등)가 낸 충돌만 모아서
+    // 칸별 빨간 사각형은 "원래 룰" 위반에만 쓰이게 하고, 스네이크 자체 위반은
+    // 아래 외곽선으로 따로 표시한다.
+    this._nonSnakeConflictKeys = new Set();
+    for (const s of this.board.structures) {
+      if (s.type === 'snake') continue;
+      for (const { row, col } of s.validate(this.board)) this._nonSnakeConflictKeys.add(`${row},${col}`);
+    }
+
+    const infos = this.board.structures.filter(s => s.type === 'snake').map(s => {
+      const cells = s.getCells(this.board);
+      const allFilled = cells.length > 0 && cells.every(c => c.value !== null);
+      const path = s.longestPathFromStart(this.board);
+      const complete = allFilled && path.length === cells.length;
+      const color = complete ? 'var(--snake-success)' : allFilled ? 'var(--conflict)' : 'var(--snake-default)';
+      return { structure: s, path, color };
+    });
+    this._drawSnakeOutlines(infos);
+    this._drawSnakePathIcons(infos);
+  }
+
+  /**
+   * 노출된 변들을 방향별로 모아 연속 구간을 하나의 선분으로 합친다.
+   * (한 칸씩 따로 그리면 이어붙는 자리마다 라운드 캡이 작은 혹처럼 튀어나오므로,
+   * 진짜 모서리에서만 둥글게 보이도록 먼저 합친 뒤 그린다)
+   */
+  _mergeEdgeRuns(items, groupOf, posOf) {
+    const groups = new Map();
+    for (const it of items) {
+      const g = groupOf(it);
+      if (!groups.has(g)) groups.set(g, []);
+      groups.get(g).push(posOf(it));
+    }
+    const runs = [];
+    for (const [group, vals] of groups) {
+      vals.sort((a, b) => a - b);
+      let start = vals[0], prev = vals[0];
+      for (let i = 1; i <= vals.length; i++) {
+        const v = vals[i];
+        if (v === prev + 1) { prev = v; continue; }
+        runs.push({ group, start, end: prev + 1 });
+        if (i < vals.length) { start = v; prev = v; }
+      }
+    }
+    return runs;
+  }
+
+  /**
+   * 스네이크 구조가 차지하는 영역의 가장 바깥 테두리만 그린다 (칸별 배경/테두리가 아님).
+   * 기본(미완성) 노란색 → 유효 경로 존재 시 초록 → 다 채웠는데 경로가 없으면 빨간색.
+   * 모서리는 살짝 둥글게(라운드 캡), 시작 칸에는 살짝 작은 사각 테두리를 하나 더
+   * 그려 두 줄처럼 보이게 표시한다.
+   */
+  _drawSnakeOutlines(infos) {
+    if (!this._gSnakeOutline) {
+      this._gSnakeOutline = this._g('g-snake-outline');
+      this.svg.appendChild(this._gSnakeOutline);
+    }
+    while (this._gSnakeOutline.firstChild) this._gSnakeOutline.removeChild(this._gSnakeOutline.firstChild);
+
+    // 9x9 판 전체 테두리(GRID_THICK)와 두께를 맞춘다
+    const OUTLINE_W = GRID_THICK;
+    for (const { structure: s, color } of infos) {
+      const cellSet = new Set(s.coords.map(c => `${c.row},${c.col}`));
+      const top = [], bottom = [], left = [], right = [];
+      for (const { row, col } of s.coords) {
+        if (!cellSet.has(`${row - 1},${col}`)) top.push({ row, col });
+        if (!cellSet.has(`${row + 1},${col}`)) bottom.push({ row, col });
+        if (!cellSet.has(`${row},${col - 1}`)) left.push({ row, col });
+        if (!cellSet.has(`${row},${col + 1}`)) right.push({ row, col });
+      }
+
+      for (const { group: row, start: c0, end: c1 } of this._mergeEdgeRuns(top, it => it.row, it => it.col)) {
+        const y = this._py(row);
+        this._gSnakeOutline.appendChild(this._line(this._px(c0), y, this._px(c1), y, OUTLINE_W, color, 'round'));
+      }
+      for (const { group: row, start: c0, end: c1 } of this._mergeEdgeRuns(bottom, it => it.row, it => it.col)) {
+        const y = this._py(row) + CELL;
+        this._gSnakeOutline.appendChild(this._line(this._px(c0), y, this._px(c1), y, OUTLINE_W, color, 'round'));
+      }
+      for (const { group: col, start: r0, end: r1 } of this._mergeEdgeRuns(left, it => it.col, it => it.row)) {
+        const x = this._px(col);
+        this._gSnakeOutline.appendChild(this._line(x, this._py(r0), x, this._py(r1), OUTLINE_W, color, 'round'));
+      }
+      for (const { group: col, start: r0, end: r1 } of this._mergeEdgeRuns(right, it => it.col, it => it.row)) {
+        const x = this._px(col) + CELL;
+        this._gSnakeOutline.appendChild(this._line(x, this._py(r0), x, this._py(r1), OUTLINE_W, color, 'round'));
+      }
+
+      const sx = this._px(s.start.col), sy = this._py(s.start.row);
+      const inset = 8;
+      const startRect = this._el('rect');
+      startRect.setAttribute('x', sx + inset);
+      startRect.setAttribute('y', sy + inset);
+      startRect.setAttribute('width',  CELL - inset * 2);
+      startRect.setAttribute('height', CELL - inset * 2);
+      startRect.setAttribute('rx', '2');
+      startRect.setAttribute('fill', 'none');
+      startRect.setAttribute('stroke', color);
+      startRect.setAttribute('stroke-width', OUTLINE_W); // 바깥 외곽선과 두께 통일
+      startRect.setAttribute('pointer-events', 'none');
+      this._gSnakeOutline.appendChild(startRect);
+    }
+  }
+
+  /** 시작점부터 이어지는 경로의 칸 사이마다, 물결(~) 표시로 연결을 나타낸다 */
+  _drawSnakePathIcons(infos) {
+    if (!this._gSnakePath) {
+      this._gSnakePath = this._g('g-snake-path');
+      this.svg.appendChild(this._gSnakePath);
+    }
+    while (this._gSnakePath.firstChild) this._gSnakePath.removeChild(this._gSnakePath.firstChild);
+
+    for (const { path, color } of infos) {
+      if (path.length < 2) continue;
+      for (let i = 0; i < path.length - 1; i++) {
+        const from = path[i], to = path[i + 1];
+        const ax = this._px(from.col) + CELL / 2, ay = this._py(from.row) + CELL / 2;
+        const bx = this._px(to.col)   + CELL / 2, by = this._py(to.row)   + CELL / 2;
+        const mx = (ax + bx) / 2, my = (ay + by) / 2;
+        const angle = Math.atan2(by - ay, bx - ax) * 180 / Math.PI;
+
+        const wave = this._el('path'); // 로컬 좌표: 중심(0,0) 기준 좌우 대칭 물결(~) 한 굽이
+        wave.setAttribute('d', 'M -9,0 Q -4.5,-4.5 0,0 Q 4.5,4.5 9,0');
+        wave.setAttribute('transform', `translate(${mx},${my}) rotate(${angle})`);
+        wave.setAttribute('fill', 'none');
+        wave.setAttribute('stroke', color);
+        wave.setAttribute('stroke-width', '2.5');
+        wave.setAttribute('stroke-linecap', 'round');
+        wave.setAttribute('pointer-events', 'none');
+        this._gSnakePath.appendChild(wave);
+      }
     }
   }
 
@@ -263,8 +403,9 @@ export class BoardRenderer {
       cell.isGiven      ? 'var(--cell-given-bg)'    :
                           'var(--cell-bg)');
 
-    // 빨간 테두리 최상단 배치
-    if (cell.isConflict) {
+    // 빨간 테두리 최상단 배치 — "원래 룰"(줄/박스/부등호/연속 등) 위반에만 표시.
+    // 스네이크 자체 위반은 영역 외곽선으로 따로 표시하므로 여기선 제외한다.
+    if (this._nonSnakeConflictKeys?.has(`${row},${col}`)) {
       conflictRect.setAttribute('display', 'block');
     } else {
       conflictRect.setAttribute('display', 'none');
@@ -573,13 +714,13 @@ export class BoardRenderer {
   // ── SVG 유틸 ──
   _el(tag) { return document.createElementNS('http://www.w3.org/2000/svg', tag); }
   _g(id)   { const g = this._el('g'); g.id = id; return g; }
-  _line(x1, y1, x2, y2, w, stroke) {
+  _line(x1, y1, x2, y2, w, stroke, linecap = 'square') {
     const l = this._el('line');
     l.setAttribute('x1', x1); l.setAttribute('y1', y1);
     l.setAttribute('x2', x2); l.setAttribute('y2', y2);
     l.setAttribute('stroke',       stroke);
     l.setAttribute('stroke-width', w);
-    l.setAttribute('stroke-linecap', 'square');
+    l.setAttribute('stroke-linecap', linecap);
     return l;
   }
 }

@@ -8,6 +8,7 @@
 import { createStandardSudokuStructures } from '../structures/StandardSudoku.js';
 import { Inequality } from '../structures/Inequality.js';
 import { Consecutive } from '../structures/Consecutive.js';
+import { Snake } from '../structures/Snake.js';
 
 // 여러 9x9 판이 겹칠 때 공유되는 구조체(줄/박스/전체테두리)를 중복 없이 하나로 합친다.
 function dedupStructures(structuresList) {
@@ -37,7 +38,8 @@ export function gridToGivens(grid, originRow = 0, originCol = 0) {
  *   grid?: number[][],            // 단일 판일 때 givens 대신 사용 가능 (boards[0] 기준으로 변환)
  *   inequalities?: [{ a: {row,col}, b: {row,col}, greater: 'a'|'b' }, ...], // 부등호 표시 (인접한 두 칸)
  *   consecutives?: [{ a: {row,col}, b: {row,col} }, ...],                  // 연속 표시 (인접한 두 칸, 값 차이 1)
- *   (박스 경계를 넘는 좌표 쌍도 그대로 지원됨 — 구조체가 좌표만으로 동작하고 3x3 소속과 무관함)
+ *   snakes?: [{ cells: [{row,col}, ...], start: {row,col} }, ...],         // 스네이크 (지정 칸들 + 시작점, 해밀턴 경로 제약)
+ *   (박스 경계를 넘는 좌표 쌍/영역도 그대로 지원됨 — 구조체가 좌표만으로 동작하고 3x3 소속과 무관함)
  * }
  */
 export function buildPuzzle(stage) {
@@ -49,6 +51,9 @@ export function buildPuzzle(stage) {
   }
   for (const { a, b } of stage.consecutives ?? []) {
     structures.push(new Consecutive(a, b));
+  }
+  for (const { cells, start } of stage.snakes ?? []) {
+    structures.push(new Snake(cells, start));
   }
   const givens = stage.grid
     ? gridToGivens(stage.grid, stage.boards[0].row, stage.boards[0].col)

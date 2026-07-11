@@ -13,6 +13,8 @@
   --text-sel:          #1e6b41;
   --text-note:         rgba(35, 39, 51, 0.5);
   --ineq-mark:         #5c6370;
+  --snake-default:     #e0a72c;
+  --snake-success:     #2f9e60;
 }
 
 * { box-sizing: border-box; }
