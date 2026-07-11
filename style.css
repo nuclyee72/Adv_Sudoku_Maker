@@ -1,0 +1,369 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@500;700&family=Inter:wght@400;500;600&display=swap');
+
+:root {
+  --grid-line:        #d7dbe3;
+  --box-line:          #232733;
+  --cell-bg:           #ffffff;
+  --cell-given-bg:      #f4f5f8;
+  --cell-selected:      #d3ecdc;
+  --cell-highlighted:   #edf8f0;
+  --conflict:          #e53e3e;
+  --text-given:        #232733;
+  --text-input:        #2f9e60;
+  --text-sel:          #1e6b41;
+  --text-note:         rgba(35, 39, 51, 0.5);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: #ffffff;
+  font-family: 'Inter', system-ui, sans-serif;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: none;
+}
+
+/* ── 스도쿠 판 (패널 없이 판만 떠 있음) ── */
+.board-panel {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 1;
+  cursor: grab;
+}
+
+.board-wrapper {
+  display: inline-block;
+  line-height: 0;
+}
+
+#sudoku-svg {
+  display: block;
+  transform-origin: 0 0;
+  filter: drop-shadow(0 24px 48px rgba(20, 24, 40, 0.18));
+}
+
+.cell-win {
+  animation: cellWin 1s ease;
+}
+
+@keyframes cellWin {
+  0%   { fill: var(--cell-bg); }
+  40%  { fill: #ffe58a; }
+  100% { fill: var(--cell-bg); }
+}
+
+/* ── 메모(후보 숫자) ── */
+.cell-notes text {
+  transition: fill 0.15s ease;
+}
+
+@keyframes noteReject {
+  0%      { fill: var(--text-note); }
+  30%, 70% { fill: var(--conflict); }
+  100%    { fill: var(--text-note); }
+}
+
+.cell-notes.flash-reject text {
+  animation: noteReject 0.5s ease;
+}
+
+/* ── 숫자 입력 키패드 패널 ──
+   #keypad-panel 은 [토글 탭][본 키패드]로 이루어진 flex 래퍼로,
+   본 키패드(kp-panel-body)는 항상 같은 화면 위치에 그대로 보인다.
+   kp-extra-menu는 flex 흐름 밖(position:absolute)에서 토글의 왼쪽
+   가장자리(right:100%)에 붙어 폭 0 → N으로 펼쳐진다 — 이렇게 해야
+   패널 자체의 flex 박스 크기가 안 바뀌어 본 키패드가 화면 밖으로
+   밀려나거나, 접혔을 때 안 보이는 큰 히트박스가 남는 문제를 피한다. */
+.keypad-panel {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: stretch;
+}
+
+.kp-extra-menu {
+  position: absolute;
+  top: 0;
+  right: 100%;
+  height: 100%;
+  width: 0;
+  overflow: hidden;
+  border-radius: 24px 0 0 24px;
+  background: rgba(255, 255, 255, 0.65);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-right: none;
+  box-shadow: 0 12px 40px rgba(20, 24, 40, 0.14);
+  opacity: 0;
+  transition: width 0.25s ease, opacity 0.2s ease;
+}
+
+.keypad-panel.menu-open .kp-extra-menu {
+  width: 180px;
+  opacity: 1;
+}
+
+.kp-extra-inner {
+  width: 160px; /* 펼침 애니메이션 중 내부가 찌그러지지 않도록 고정 */
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+}
+
+.kp-extra-placeholder {
+  margin: 0;
+  color: rgba(35, 39, 51, 0.45);
+  font-size: 13px;
+  font-style: italic;
+  text-align: center;
+}
+
+.kp-toggle {
+  flex: 0 0 auto;
+  width: 26px;
+  border: none;
+  border-radius: 14px 0 0 14px;
+  background: rgba(255, 255, 255, 0.65);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-right: none;
+  box-shadow: -6px 0 24px rgba(20, 24, 40, 0.1);
+  color: var(--text-given);
+  font-size: 14px;
+  cursor: pointer;
+  transition: border-radius 0.25s ease;
+}
+
+.kp-toggle:hover {
+  background: rgba(255, 255, 255, 0.85);
+}
+
+.keypad-panel.menu-open .kp-toggle {
+  border-radius: 0;
+}
+
+.kp-panel-body {
+  width: 232px;
+  padding: 20px;
+  border-radius: 0 24px 24px 0;
+  background: rgba(255, 255, 255, 0.65);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow: 0 12px 40px rgba(20, 24, 40, 0.14);
+  cursor: grab;
+}
+
+.kp-body {
+  width: 192px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.kp-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.kp-sep {
+  height: 1px;
+  background: rgba(35, 39, 51, 0.12);
+}
+
+.kp-btn {
+  height: 56px;
+  border: none;
+  border-radius: 14px;
+  background: #ffffff;
+  color: var(--text-given);
+  font-family: 'Outfit', 'Inter', sans-serif;
+  font-size: 20px;
+  font-weight: 500;
+  box-shadow: 0 2px 6px rgba(20, 24, 40, 0.08);
+  cursor: pointer;
+  transition: transform 0.08s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.kp-btn:hover {
+  box-shadow: 0 4px 10px rgba(20, 24, 40, 0.14);
+}
+
+.kp-btn.pressed {
+  transform: scale(0.9);
+}
+
+.kp-num.active {
+  background: var(--cell-selected);
+  color: var(--text-sel);
+  font-weight: 700;
+}
+
+.kp-row-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 8px;
+}
+
+.kp-row-actions .kp-btn {
+  flex: 1;
+  height: 44px;
+  font-size: 14px;
+}
+
+.kp-note {
+  font-weight: 600;
+}
+
+.kp-note.active {
+  background: var(--cell-selected);
+  color: var(--text-sel);
+}
+
+.kp-erase {
+  background: #fff1f1;
+  color: var(--conflict);
+  font-weight: 600;
+}
+
+.kp-reset-all {
+  height: 44px;
+  border-radius: 12px;
+  border: 1.5px solid var(--conflict);
+  background: transparent;
+  color: var(--conflict);
+  font-family: 'Outfit', 'Inter', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.08s ease;
+}
+
+.kp-reset-all:hover {
+  background: #fff1f1;
+}
+
+.kp-reset-all.pressed {
+  transform: scale(0.96);
+}
+
+/* ── 완성 토스트 ── */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 48px;
+  transform: translate(-50%, 16px);
+  padding: 14px 28px;
+  border-radius: 999px;
+  background: rgba(35, 39, 51, 0.92);
+  color: #ffffff;
+  font-family: 'Outfit', 'Inter', sans-serif;
+  font-size: 16px;
+  font-weight: 600;
+  box-shadow: 0 12px 32px rgba(20, 24, 40, 0.25);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+  z-index: 999;
+}
+
+.toast.show {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+/* ── 모두 지우기 확인 모달 ── */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(20, 24, 40, 0.32);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s ease;
+}
+
+.modal-overlay.show {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.modal-card {
+  width: 300px;
+  padding: 28px 24px 20px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow: 0 24px 60px rgba(20, 24, 40, 0.28);
+  cursor: default;
+  transform: scale(0.94) translateY(6px);
+  transition: transform 0.18s ease;
+}
+
+.modal-overlay.show .modal-card {
+  transform: scale(1) translateY(0);
+}
+
+.modal-text {
+  margin: 0 0 22px;
+  color: var(--text-given);
+  font-size: 15px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.modal-btn {
+  flex: 1;
+  height: 44px;
+  border-radius: 12px;
+  border: none;
+  font-family: 'Outfit', 'Inter', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.08s ease, background 0.15s ease;
+}
+
+.modal-btn:active {
+  transform: scale(0.96);
+}
+
+.modal-btn-cancel {
+  background: #f0f1f4;
+  color: var(--text-given);
+}
+
+.modal-btn-cancel:hover {
+  background: #e6e7ec;
+}
+
+.modal-btn-danger {
+  background: var(--conflict);
+  color: #ffffff;
+}
+
+.modal-btn-danger:hover {
+  background: #cc3535;
+}
