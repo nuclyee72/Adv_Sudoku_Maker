@@ -12,6 +12,7 @@
   --text-input:        #2f9e60;
   --text-sel:          #1e6b41;
   --text-note:         rgba(35, 39, 51, 0.5);
+  --ineq-mark:         #5c6370;
 }
 
 * { box-sizing: border-box; }

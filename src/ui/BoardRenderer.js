@@ -64,8 +64,9 @@ export class BoardRenderer {
     this._drawBoxBorders();
     this._drawGridBorders();
 
-    // 에러 테두리를 제일 위로 올리기 위해 마지막에 삽입
+    // 에러 테두리를 위로, 부등호 표시는 그보다 더 위로 오도록 순서대로 삽입
     this.svg.appendChild(this._gConflicts);
+    this._drawInequalities();
 
     Validator.validate(this.board);
     this._updateAll();
@@ -178,6 +179,38 @@ export class BoardRenderer {
       r.setAttribute('stroke-width', GRID_THICK);
       r.setAttribute('rx', '5');
       g.appendChild(r);
+    }
+    this.svg.appendChild(g);
+  }
+
+  // ── 부등호 표시 (인접한 두 칸 사이, 더 작은 값 쪽을 뾰족한 끝이 가리킴) ──
+  _drawInequalities() {
+    const g = this._g('g-inequalities');
+    const vis = new Set(this.board.getVisibleCells().map(c => `${c.row},${c.col}`));
+    for (const s of this.board.structures.filter(s => s.type === 'inequality')) {
+      const { a, b, greater } = s;
+      if (!vis.has(`${a.row},${a.col}`) || !vis.has(`${b.row},${b.col}`)) continue;
+
+      const ax = this._px(a.col) + CELL / 2, ay = this._py(a.row) + CELL / 2;
+      const bx = this._px(b.col) + CELL / 2, by = this._py(b.row) + CELL / 2;
+      const mx = (ax + bx) / 2, my = (ay + by) / 2;
+
+      // 더 작은 값을 가져야 하는 칸 쪽으로 쐐기 끝이 향하도록 회전각 계산
+      const smallerX = greater === 'a' ? bx : ax;
+      const smallerY = greater === 'a' ? by : ay;
+      const angle = Math.atan2(smallerY - my, smallerX - mx) * 180 / Math.PI;
+
+      const chevron = this._el('polyline');
+      const w = 7, h = 6; // 로컬 좌표: 기본적으로 -X(왼쪽)를 가리키는 꺾인 부등호 모양
+      chevron.setAttribute('points', `${w},${-h} ${-w},0 ${w},${h}`);
+      chevron.setAttribute('transform', `translate(${mx},${my}) rotate(${angle - 180})`);
+      chevron.setAttribute('fill', 'none');
+      chevron.setAttribute('stroke', 'var(--ineq-mark)');
+      chevron.setAttribute('stroke-width', '2.5');
+      chevron.setAttribute('stroke-linecap', 'round');
+      chevron.setAttribute('stroke-linejoin', 'round');
+      chevron.setAttribute('pointer-events', 'none');
+      g.appendChild(chevron);
     }
     this.svg.appendChild(g);
   }

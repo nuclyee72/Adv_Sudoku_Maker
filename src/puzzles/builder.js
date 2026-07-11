@@ -6,6 +6,7 @@
  * 새 퍼즐을 추가할 땐 이 파일을 건드릴 필요 없이 stages/에 데이터만 추가하면 된다.
  */
 import { createStandardSudokuStructures } from '../structures/StandardSudoku.js';
+import { Inequality } from '../structures/Inequality.js';
 
 // 여러 9x9 판이 겹칠 때 공유되는 구조체(줄/박스/전체테두리)를 중복 없이 하나로 합친다.
 function dedupStructures(structuresList) {
@@ -33,12 +34,16 @@ export function gridToGivens(grid, originRow = 0, originCol = 0) {
  *   boards: [{ row, col }, ...],  // 9x9 표준 스도쿠 판들의 원점 좌표 (겹치면 자동으로 구조체 중복 제거)
  *   givens?: [{ row, col, value }, ...],
  *   grid?: number[][],            // 단일 판일 때 givens 대신 사용 가능 (boards[0] 기준으로 변환)
+ *   inequalities?: [{ a: {row,col}, b: {row,col}, greater: 'a'|'b' }, ...], // 부등호 표시 (인접한 두 칸)
  * }
  */
 export function buildPuzzle(stage) {
   const structures = dedupStructures(
     stage.boards.flatMap(({ row, col }) => createStandardSudokuStructures(row, col))
   );
+  for (const { a, b, greater } of stage.inequalities ?? []) {
+    structures.push(new Inequality(a, b, greater));
+  }
   const givens = stage.grid
     ? gridToGivens(stage.grid, stage.boards[0].row, stage.boards[0].col)
     : stage.givens;
