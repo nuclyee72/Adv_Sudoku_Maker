@@ -64,9 +64,10 @@ export class BoardRenderer {
     this._drawBoxBorders();
     this._drawGridBorders();
 
-    // 에러 테두리를 위로, 부등호 표시는 그보다 더 위로 오도록 순서대로 삽입
+    // 에러 테두리를 위로, 부등호/연속 표시는 그보다 더 위로 오도록 순서대로 삽입
     this.svg.appendChild(this._gConflicts);
     this._drawInequalities();
+    this._drawConsecutives();
 
     Validator.validate(this.board);
     this._updateAll();
@@ -211,6 +212,31 @@ export class BoardRenderer {
       chevron.setAttribute('stroke-linejoin', 'round');
       chevron.setAttribute('pointer-events', 'none');
       g.appendChild(chevron);
+    }
+    this.svg.appendChild(g);
+  }
+
+  // ── 연속 표시 (인접한 두 칸 사이, 값의 차이가 1이어야 함을 나타내는 점) ──
+  _drawConsecutives() {
+    const g = this._g('g-consecutives');
+    const vis = new Set(this.board.getVisibleCells().map(c => `${c.row},${c.col}`));
+    for (const s of this.board.structures.filter(s => s.type === 'consecutive')) {
+      const { a, b } = s;
+      if (!vis.has(`${a.row},${a.col}`) || !vis.has(`${b.row},${b.col}`)) continue;
+
+      const ax = this._px(a.col) + CELL / 2, ay = this._py(a.row) + CELL / 2;
+      const bx = this._px(b.col) + CELL / 2, by = this._py(b.row) + CELL / 2;
+      const mx = (ax + bx) / 2, my = (ay + by) / 2;
+
+      const dot = this._el('circle');
+      dot.setAttribute('cx', mx);
+      dot.setAttribute('cy', my);
+      dot.setAttribute('r', 5);
+      dot.setAttribute('fill', 'var(--ineq-mark)');
+      dot.setAttribute('stroke', 'var(--cell-bg)');
+      dot.setAttribute('stroke-width', '1.5');
+      dot.setAttribute('pointer-events', 'none');
+      g.appendChild(dot);
     }
     this.svg.appendChild(g);
   }

@@ -9,7 +9,8 @@ import { single } from './stages/single.js';
 import { cross } from './stages/cross.js';
 import { overlapping } from './stages/overlapping.js';
 import { inequality } from './stages/inequality.js';
+import { consecutive } from './stages/consecutive.js';
 
-const STAGES = [single, cross, overlapping, inequality];
+const STAGES = [single, cross, overlapping, inequality, consecutive];
 
 export const PUZZLES = STAGES.map(buildPuzzle);
