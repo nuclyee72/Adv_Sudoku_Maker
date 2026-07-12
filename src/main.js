@@ -6,7 +6,7 @@ import { BoardRenderer } from './ui/BoardRenderer.js';
 import { DragPanel } from './ui/DragPanel.js';
 import { Keypad } from './ui/Keypad.js';
 import { PUZZLES } from './puzzles/index.js';
-import { templates as GENERATE_TEMPLATES } from './generator/templates.js';
+import { templates as GENERATE_TEMPLATES } from './generator/templates/index.js';
 import { generatePuzzle } from './generator/generatePuzzle.js';
 
 const svg          = document.getElementById('sudoku-svg');

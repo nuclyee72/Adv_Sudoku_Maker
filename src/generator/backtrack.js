@@ -158,7 +158,14 @@ export function countSolutions(board, { cap = 2, turntableRegions = [], nodeCap 
     for (let rot = 0; rot < 4; rot++) {
       const candidate = rotateGrid(trueGrid, rot);
       for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) cells[r][c].value = candidate[r][c];
-      total += branchTurntables(idx + 1, remainingCap - total);
+
+      // 회전 후보를 곧장 recurse에 넘기면, 남은 미배정 칸이 없거나 이 영역의 peer를
+      // 참조하는 칸이 하나도 없을 때 충돌이 전혀 검사되지 않고 "해 1개"로 잘못 셀 수 있다.
+      // 그래서 여기서 직접 peer/부가구조체 유효성을 확인한 후에만 recurse한다.
+      const flatCells = cells.flat();
+      const valid = flatCells.every(cell => !(usedMask(cell) & (1 << cell.value)) && extraOk(cell));
+      if (valid) total += branchTurntables(idx + 1, remainingCap - total);
+
       if (total >= remainingCap || capped) break;
     }
 

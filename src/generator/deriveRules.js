@@ -47,18 +47,6 @@ function readGrid(board, originRow, originCol, size) {
   return grid;
 }
 
-/** snake 규칙들의 경로/값을 해 채우기 전에 먼저 확정한다. 실패하면 null(호출 쪽에서 전체 재시도). */
-export function prefillSnakeWalks(board, rules) {
-  const walks = [];
-  for (const rule of rules) {
-    if (rule.type !== 'snake') continue;
-    const walk = pickSnakeWalk(board, rule.region, rule.length ?? [4, 7]);
-    if (!walk) return null;
-    walks.push({ rule, walk });
-  }
-  return walks;
-}
-
 function pickTurntableOrigin(board, rule) {
   const size = rule.size;
   const { row, col, height, width } = rule.region;
@@ -79,11 +67,60 @@ function pickTurntableOrigin(board, rule) {
 }
 
 /**
- * 완성된 해(board 전체가 채워진 상태) + snake 사전 경로들을 보고 실제 규칙 구조체를 만든다.
+ * turntable 규칙들의 배치를 가장 먼저 정한다(값과 무관한 순수 기하 문제라, snake 경로를 뽑기
+ * 전에 확정해야 snake가 turntable 칸을 침범하지 않도록 피할 수 있다). 실패 시 null.
+ * 반환: [{ rule, originRow, originCol, size, scrambleSteps }]
+ */
+export function pickTurntableOrigins(board, rules) {
+  const result = [];
+  for (const rule of rules) {
+    if (rule.type !== 'turntable') continue;
+    const origin = pickTurntableOrigin(board, rule);
+    if (!origin) return null;
+    result.push({
+      rule,
+      originRow: origin.row,
+      originCol: origin.col,
+      size: rule.size,
+      scrambleSteps: randInt(1, 3), // 0(무회전)은 스크램블이 아니므로 제외
+    });
+  }
+  return result;
+}
+
+function turntableReservedKeys(turntableOrigins) {
+  const keys = new Set();
+  for (const t of turntableOrigins) {
+    for (let r = 0; r < t.size; r++)
+      for (let c = 0; c < t.size; c++)
+        keys.add(`${t.originRow + r},${t.originCol + c}`);
+  }
+  return keys;
+}
+
+/**
+ * snake 규칙들의 경로/값을 해 채우기 전에 먼저 확정한다. turntable 칸(reservedKeys)은
+ * 지나갈 수 없다 — 같은 칸이 "항상 given + 회전 미지수"와 "값을 추리하는 일반 칸"을
+ * 동시에 만족할 수 없기 때문. 실패하면 null(호출 쪽에서 전체 재시도).
+ */
+export function prefillSnakeWalks(board, rules, reservedKeys = new Set()) {
+  const walks = [];
+  for (const rule of rules) {
+    if (rule.type !== 'snake') continue;
+    const walk = pickSnakeWalk(board, rule.region, rule.length ?? [4, 7], 40, reservedKeys);
+    if (!walk) return null;
+    walks.push({ rule, walk });
+  }
+  return walks;
+}
+
+/**
+ * 완성된 해(board 전체가 채워진 상태) + 미리 정해둔 snake 경로/turntable 배치를 보고
+ * 실제 규칙 구조체를 만든다.
  * 반환: { structures, turntables: [{originRow,originCol,size,scrambleSteps}] }
  * turntables는 이후 countSolutions의 회전 분기, 최종 결과 조립의 스크램블 표시에 쓰인다.
  */
-export function deriveRuleStructures(board, rules, snakeWalks) {
+export function deriveRuleStructures(board, rules, snakeWalks, turntableOrigins) {
   const structures = [];
   const turntables = [];
 
@@ -105,21 +142,17 @@ export function deriveRuleStructures(board, rules, snakeWalks) {
       const found = snakeWalks.find(w => w.rule === rule);
       if (found) structures.push(new Snake(found.walk.cells, found.walk.start));
     } else if (rule.type === 'turntable') {
-      const origin = pickTurntableOrigin(board, rule);
-      if (!origin) continue;
-      const turntable = new Turntable(origin.row, origin.col, rule.size);
-      structures.push(turntable);
-      turntables.push({
-        originRow: origin.row,
-        originCol: origin.col,
-        size: rule.size,
-        scrambleSteps: randInt(1, 3), // 0(무회전)은 스크램블이 아니므로 제외
-      });
+      const found = turntableOrigins.find(t => t.rule === rule);
+      if (!found) continue;
+      structures.push(new Turntable(found.originRow, found.originCol, found.size));
+      turntables.push(found);
     }
   }
 
   return { structures, turntables };
 }
+
+export { turntableReservedKeys };
 
 /** 턴테이블 영역의 진짜 값을 스크램블 회전(표시용)으로 바꾼 grid를 돌려준다. */
 export function scrambledTurntableGrid(board, turntable) {

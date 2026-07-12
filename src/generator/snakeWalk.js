@@ -9,10 +9,11 @@ import { shuffle, randInt, pick } from './random.js';
 
 function key(row, col) { return `${row},${col}`; }
 
-function buildWalk(board, region, targetLen) {
+function buildWalk(board, region, targetLen, reservedKeys) {
   const inRegion = (r, c) =>
     r >= region.row && r < region.row + region.height &&
-    c >= region.col && c < region.col + region.width;
+    c >= region.col && c < region.col + region.width &&
+    !reservedKeys.has(key(r, c));
 
   const candidates = board.getVisibleCells().filter(c => inRegion(c.row, c.col));
   if (candidates.length < targetLen) return null;
@@ -73,11 +74,11 @@ function assignPathValues(board, path) {
  * region 안에서 [minLen,maxLen] 길이의 자기회피 경로를 찾아 값까지 채워 넣는다.
  * 성공 시 { cells:[{row,col}], start:{row,col} }, 여러 번 시도해도 실패하면 null.
  */
-export function pickSnakeWalk(board, region, [minLen, maxLen], attempts = 40) {
+export function pickSnakeWalk(board, region, [minLen, maxLen], attempts = 40, reservedKeys = new Set()) {
   const targetLen = randInt(minLen, maxLen);
 
   for (let i = 0; i < attempts; i++) {
-    const path = buildWalk(board, region, targetLen);
+    const path = buildWalk(board, region, targetLen, reservedKeys);
     if (!path) continue;
     if (assignPathValues(board, path)) {
       return {

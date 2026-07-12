@@ -1,9 +1,9 @@
 /**
- * inequality.js — 부등호 스도쿠 스테이지 데이터
+ * test_inequality.js — 부등호 스도쿠 스테이지 데이터
  * 인접한 두 칸 사이에 부등호(<,>) 표시가 있고, 표시된 대소 관계를 만족해야 하는 변형 규칙.
  * 3x3 박스 내부뿐 아니라 박스 경계를 넘는 인접 칸 사이에도 동일하게 적용된다.
  */
-export const inequality = {
+export const test_inequality = {
   id: 'test_inequality',
   name: 'test_inequality',
   boards: [{ row: 0, col: 0 }],

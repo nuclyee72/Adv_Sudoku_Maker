@@ -1,10 +1,10 @@
 /**
- * snake.js — 스네이크 스도쿠 스테이지 데이터
+ * test_snake.js — 스네이크 스도쿠 스테이지 데이터
  * 지정된 칸들(형태는 자유) 중 시작점에서 출발해, 인접한(상하좌우) 칸을
  * 값이 1씩만 차이나게 한 번씩 지나 모든 칸을 방문하는 경로가 있어야 하는 변형 규칙.
  * 경로가 있으면 초록 테두리 + 진행 방향 화살표가 자동으로 표시된다.
  */
-export const snake = {
+export const test_snake = {
   id: 'test_snake',
   name: 'test_snake',
   boards: [{ row: 0, col: 0 }],

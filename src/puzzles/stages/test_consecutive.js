@@ -1,9 +1,9 @@
 /**
- * consecutive.js — 연속 스도쿠 스테이지 데이터
+ * test_consecutive.js — 연속 스도쿠 스테이지 데이터
  * 인접한 두 칸(값 차이가 1) 표시. 3x3 박스 내부뿐 아니라
  * 박스 경계를 넘는 인접 칸 사이에도 동일하게 적용된다.
  */
-export const consecutive = {
+export const test_consecutive = {
   id: 'test_consecutive',
   name: 'test_consecutive',
   boards: [{ row: 0, col: 0 }],

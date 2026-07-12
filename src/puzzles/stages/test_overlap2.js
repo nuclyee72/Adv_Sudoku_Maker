@@ -1,7 +1,7 @@
 /**
- * overlapping.js — 겹침 스도쿠 (2판) 스테이지 데이터
+ * test_overlap2.js — 겹침 스도쿠 (2판) 스테이지 데이터
  */
-export const overlapping = {
+export const test_overlap2 = {
   id: 'test_overlap2',
   name: 'test_overlap2',
   boards: [

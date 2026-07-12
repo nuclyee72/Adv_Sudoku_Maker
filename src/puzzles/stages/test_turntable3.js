@@ -1,9 +1,9 @@
 /**
- * turntable.js — 턴테이블 스도쿠 스테이지 데이터
+ * test_turntable3.js — 턴테이블 스도쿠 스테이지 데이터
  * 가운데 3x3 박스가 90도 돌아간 채로 주어진다. 손잡이를 드래그해 돌려서
  * 올바른 방향으로 맞춰야 나머지 스도쿠 규칙과 들어맞는다.
  */
-export const turntable = {
+export const test_turntable3 = {
   id: 'test_turntable3',
   name: 'test_turntable3',
   boards: [{ row: 0, col: 0 }],

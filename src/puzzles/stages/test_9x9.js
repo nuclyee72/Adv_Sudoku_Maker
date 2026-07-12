@@ -1,7 +1,7 @@
 /**
- * single.js — 기본 9×9 스도쿠 스테이지 데이터
+ * test_9x9.js — 기본 9×9 스도쿠 스테이지 데이터
  */
-export const single = {
+export const test_9x9 = {
   id: 'test_9x9',
   name: 'test_9x9',
   boards: [{ row: 0, col: 0 }],

@@ -1,7 +1,7 @@
 /**
- * cross.js — 십자형 스도쿠 (4판) 스테이지 데이터
+ * test_overlap4.js — 십자형 스도쿠 (4판) 스테이지 데이터
  */
-export const cross = {
+export const test_overlap4 = {
   id: 'test_overlap4',
   name: 'test_overlap4',
   boards: [
