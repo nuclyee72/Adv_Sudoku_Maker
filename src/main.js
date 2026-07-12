@@ -6,6 +6,8 @@ import { BoardRenderer } from './ui/BoardRenderer.js';
 import { DragPanel } from './ui/DragPanel.js';
 import { Keypad } from './ui/Keypad.js';
 import { PUZZLES } from './puzzles/index.js';
+import { templates as GENERATE_TEMPLATES } from './generator/templates.js';
+import { generatePuzzle } from './generator/generatePuzzle.js';
 
 const svg          = document.getElementById('sudoku-svg');
 const boardPanel   = document.getElementById('board-panel');
@@ -14,22 +16,27 @@ const keypadGrid   = document.getElementById('keypad-grid');
 const kpToggle     = document.getElementById('kp-toggle');
 const btnResetAll  = document.getElementById('btn-reset-all');
 const toast        = document.getElementById('toast');
+const generateStatus = document.getElementById('generate-status');
 
 const confirmModal   = document.getElementById('confirm-modal');
 const confirmText    = document.getElementById('confirm-text');
 const confirmOk      = document.getElementById('confirm-ok');
 const confirmCancel  = document.getElementById('confirm-cancel');
 
-const btnOpenPuzzle = document.getElementById('btn-open-puzzle');
-const btnOpenSave   = document.getElementById('btn-open-save');
-const btnOpenHelp   = document.getElementById('btn-open-help');
-const puzzlePanel   = document.getElementById('puzzle-panel');
-const savePanel     = document.getElementById('save-panel');
-const helpPanel     = document.getElementById('help-panel');
-const puzzleClose   = document.getElementById('puzzle-close');
-const saveClose     = document.getElementById('save-close');
-const helpClose     = document.getElementById('help-close');
-const puzzleList    = document.getElementById('puzzle-list');
+const btnOpenPuzzle   = document.getElementById('btn-open-puzzle');
+const btnOpenGenerate = document.getElementById('btn-open-generate');
+const btnOpenSave     = document.getElementById('btn-open-save');
+const btnOpenHelp     = document.getElementById('btn-open-help');
+const puzzlePanel     = document.getElementById('puzzle-panel');
+const generatePanel   = document.getElementById('generate-panel');
+const savePanel       = document.getElementById('save-panel');
+const helpPanel       = document.getElementById('help-panel');
+const puzzleClose     = document.getElementById('puzzle-close');
+const generateClose   = document.getElementById('generate-close');
+const saveClose       = document.getElementById('save-close');
+const helpClose       = document.getElementById('help-close');
+const puzzleList      = document.getElementById('puzzle-list');
+const generateList    = document.getElementById('generate-list');
 
 // ── 보드 조립 ──
 const initialPuzzle = PUZZLES.find((p) => p.id === 'test_overlap4') || PUZZLES[0];
@@ -108,7 +115,8 @@ function closePanel(panel) { panel.classList.remove('show'); }
 function isFloatingPanelOpen() {
   return savePanel.classList.contains('show')
     || helpPanel.classList.contains('show')
-    || puzzlePanel.classList.contains('show');
+    || puzzlePanel.classList.contains('show')
+    || generatePanel.classList.contains('show');
 }
 
 /** 저장/도움말/퍼즐 선택 패널 — 최초로 열릴 때만 화면 중앙 좌표를 계산해 배치, 이후엔 드래그로 옮긴 위치 유지 */
@@ -125,6 +133,7 @@ function openFloatingPanel(panel) {
 new DragPanel(savePanel, savePanel, { clamp: 'partial', minVisible: 40 });
 new DragPanel(helpPanel, helpPanel, { clamp: 'partial', minVisible: 40 });
 new DragPanel(puzzlePanel, puzzlePanel, { clamp: 'partial', minVisible: 40 });
+new DragPanel(generatePanel, generatePanel, { clamp: 'partial', minVisible: 40 });
 
 // ── 확인 모달 (모두 지우기 / 불러오기 / 퍼즐 변경 등 공용) ──
 let pendingConfirmAction = null;
@@ -257,6 +266,49 @@ function togglePuzzlePanel() {
 btnOpenPuzzle.addEventListener('click', togglePuzzlePanel);
 puzzleClose.addEventListener('click', () => closePanel(puzzlePanel));
 
+// ── 자동 생성 ──
+async function runGenerate(template) {
+  closePanel(generatePanel);
+  btnOpenGenerate.disabled = true;
+  generateStatus.textContent = '🎲 생성 중...';
+  generateStatus.classList.add('show');
+  try {
+    const puzzle = await generatePuzzle(template);
+    loadPuzzle(puzzle);
+  } catch (err) {
+    console.error(err);
+    generateStatus.textContent = '⚠️ 퍼즐 생성 실패, 다시 시도해주세요';
+    setTimeout(() => generateStatus.classList.remove('show'), 2400);
+    return;
+  } finally {
+    btnOpenGenerate.disabled = false;
+  }
+  generateStatus.classList.remove('show');
+}
+
+function renderGenerateList() {
+  generateList.innerHTML = '';
+  for (const template of GENERATE_TEMPLATES) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'puzzle-item';
+    btn.textContent = template.label;
+    btn.addEventListener('click', () => {
+      askConfirm(`'${template.label}' 템플릿으로 새 퍼즐을 생성할까요?<br/>저장된 슬롯이 모두 초기화됩니다.`, () => runGenerate(template));
+    });
+    generateList.appendChild(btn);
+  }
+}
+
+function toggleGeneratePanel() {
+  if (generatePanel.classList.contains('show')) { closePanel(generatePanel); return; }
+  renderGenerateList();
+  openFloatingPanel(generatePanel);
+}
+
+btnOpenGenerate.addEventListener('click', toggleGeneratePanel);
+generateClose.addEventListener('click', () => closePanel(generatePanel));
+
 // ── 키보드 단축키 ──
 const ARROW_DIR = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
 
@@ -287,6 +339,7 @@ window.addEventListener('keydown', (e) => {
     closePanel(savePanel);
     closePanel(helpPanel);
     closePanel(puzzlePanel);
+    closePanel(generatePanel);
     return;
   }
 

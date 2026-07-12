@@ -24,6 +24,7 @@
         <div class="kp-extra-content">
           <div id="kp-extra-scroll" class="kp-extra-scroll">
             <button id="btn-open-puzzle" class="kp-extra-btn" type="button">퍼즐 선택</button>
+            <button id="btn-open-generate" class="kp-extra-btn" type="button">자동 생성</button>
             <button id="btn-open-save" class="kp-extra-btn" type="button">저장 / 불러오기</button>
           </div>
           <button id="btn-open-help" class="kp-extra-btn kp-extra-help" type="button">도움말</button>
@@ -41,6 +42,7 @@
 
   <!-- 완성 토스트 -->
   <div id="toast" class="toast">🎉 퍼즐 완성!</div>
+  <div id="generate-status" class="toast">🎲 생성 중...</div>
 
   <!-- 확인 모달 (모두 지우기 / 불러오기 / 퍼즐 변경 등 공용) -->
   <div id="confirm-modal" class="modal-overlay">
@@ -87,6 +89,13 @@
     <button id="puzzle-close" class="floating-panel-close" type="button" aria-label="닫기">✕</button>
     <h2 class="floating-panel-title">퍼즐 선택</h2>
     <div id="puzzle-list" class="puzzle-list"></div>
+  </div>
+
+  <!-- 자동 생성 패널 -->
+  <div id="generate-panel" class="floating-panel">
+    <button id="generate-close" class="floating-panel-close" type="button" aria-label="닫기">✕</button>
+    <h2 class="floating-panel-title">자동 생성</h2>
+    <div id="generate-list" class="puzzle-list"></div>
   </div>
 
   <!-- 도움말 패널 -->

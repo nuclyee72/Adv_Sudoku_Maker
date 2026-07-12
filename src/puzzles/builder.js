@@ -12,7 +12,7 @@ import { Snake } from '../structures/Snake.js';
 import { Turntable } from '../structures/Turntable.js';
 
 // 여러 9x9 판이 겹칠 때 공유되는 구조체(줄/박스/전체테두리)를 중복 없이 하나로 합친다.
-function dedupStructures(structuresList) {
+export function dedupStructures(structuresList) {
   const structMap = new Map();
   structuresList.forEach(s => {
     const coordsKey = s.coords.map(c => `${c.row},${c.col}`).join('|');
