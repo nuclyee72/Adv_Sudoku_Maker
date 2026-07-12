@@ -1,0 +1,68 @@
+/**
+ * roomClient.js — 멀티플레이 방 API(REST) + 상태 push(WebSocket) 클라이언트
+ */
+async function request(method, path, { token, body } = {}) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) headers['X-Player-Token'] = token;
+
+  const res = await fetch(path, {
+    method,
+    headers,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+
+  const json = await res.json().catch(() => null);
+  if (!res.ok) {
+    throw new Error(json?.error || `요청에 실패했습니다. (${res.status})`);
+  }
+  return json;
+}
+
+export function createRoom({ nickname, mode, maxPlayers, templateId }) {
+  return request('POST', '/api/rooms', { body: { nickname, mode, maxPlayers, templateId } });
+}
+
+export function joinRoom(code, { nickname }) {
+  return request('POST', `/api/rooms/${code}/join`, { body: { nickname } });
+}
+
+export function updateNickname(code, token, nickname) {
+  return request('POST', `/api/rooms/${code}/nickname`, { token, body: { nickname } });
+}
+
+export function updateSettings(code, token, settings) {
+  return request('POST', `/api/rooms/${code}/settings`, { token, body: settings });
+}
+
+export function startRoom(code, token) {
+  return request('POST', `/api/rooms/${code}/start`, { token });
+}
+
+export function leaveRoom(code, token) {
+  return request('POST', `/api/rooms/${code}/leave`, { token });
+}
+
+/**
+ * 방 상태 push를 받는 WebSocket 연결.
+ * @returns {WebSocket} 호출측이 필요시 .close()로 명시적으로 나갈 수 있도록 소켓 인스턴스 반환
+ */
+export function connectSocket(code, token, { onState, onClose } = {}) {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const socket = new WebSocket(`${proto}//${location.host}/ws?code=${code}&token=${token}`);
+
+  socket.addEventListener('message', (event) => {
+    let msg;
+    try {
+      msg = JSON.parse(event.data);
+    } catch {
+      return;
+    }
+    if (msg.type === 'roomState' && onState) onState(msg.room);
+  });
+
+  socket.addEventListener('close', () => {
+    if (onClose) onClose();
+  });
+
+  return socket;
+}

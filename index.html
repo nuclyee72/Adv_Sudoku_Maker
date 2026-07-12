@@ -24,9 +24,91 @@
         <button id="btn-mp-back" class="landing-back" type="button">‹ 뒤로</button>
       </div>
 
-      <div id="landing-placeholder" class="landing-stack" hidden>
-        <p class="landing-placeholder-text">멀티플레이는 곧 추가될 예정입니다 🚧</p>
-        <button id="btn-placeholder-back" class="landing-back" type="button">‹ 뒤로</button>
+      <div id="landing-create" class="landing-stack" hidden>
+        <div class="landing-field">
+          <label for="lc-nickname">닉네임</label>
+          <input id="lc-nickname" class="landing-input" type="text" maxlength="20" placeholder="닉네임 입력"/>
+        </div>
+        <div class="landing-field">
+          <label>게임 모드</label>
+          <div class="mode-toggle">
+            <button id="lc-mode-battle" class="mode-toggle-btn active" type="button" data-mode="battle">배틀</button>
+            <button id="lc-mode-coop" class="mode-toggle-btn" type="button" data-mode="coop">협동</button>
+          </div>
+        </div>
+        <div class="landing-field">
+          <label for="lc-max-players">참가자 수</label>
+          <input id="lc-max-players" class="landing-input" type="number" min="2" max="10" value="4"/>
+        </div>
+        <div class="landing-field">
+          <label for="lc-template">퍼즐 템플릿</label>
+          <select id="lc-template" class="landing-select"></select>
+        </div>
+        <p id="lc-error" class="landing-error"></p>
+        <button id="btn-lc-submit" class="landing-btn landing-btn-primary" type="button">방 생성</button>
+        <button id="btn-lc-back" class="landing-back" type="button">‹ 뒤로</button>
+      </div>
+
+      <div id="landing-join" class="landing-stack" hidden>
+        <div class="landing-field">
+          <label for="lj-nickname">닉네임</label>
+          <input id="lj-nickname" class="landing-input" type="text" maxlength="20" placeholder="닉네임 입력"/>
+        </div>
+        <div class="landing-field">
+          <label for="lj-code">방 코드</label>
+          <input id="lj-code" class="landing-input" type="text" inputmode="numeric" maxlength="4" placeholder="0000"/>
+        </div>
+        <p id="lj-error" class="landing-error"></p>
+        <button id="btn-lj-submit" class="landing-btn landing-btn-primary" type="button">참가</button>
+        <button id="btn-lj-back" class="landing-back" type="button">‹ 뒤로</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 대기실 화면 -->
+  <div id="waiting-room-screen" class="landing-screen waiting-room-screen hidden">
+    <div class="landing-card waiting-room-card">
+      <div class="wr-code-row">
+        <span class="wr-code-label">방 코드</span>
+        <span id="wr-code" class="wr-code">0000</span>
+      </div>
+
+      <div id="wr-body" class="wr-body">
+        <div class="wr-col">
+          <h2 class="wr-col-title">참가자</h2>
+          <div id="wr-player-list" class="wr-player-list"></div>
+        </div>
+        <div class="wr-col">
+          <h2 class="wr-col-title">게임 설정</h2>
+          <div class="landing-field">
+            <label>게임 모드</label>
+            <div class="mode-toggle">
+              <button id="wr-mode-battle" class="mode-toggle-btn" type="button" data-mode="battle">배틀</button>
+              <button id="wr-mode-coop" class="mode-toggle-btn" type="button" data-mode="coop">협동</button>
+            </div>
+          </div>
+          <div class="landing-field">
+            <label for="wr-max-players">참가자 수</label>
+            <input id="wr-max-players" class="landing-input" type="number" min="2" max="10"/>
+          </div>
+          <div class="landing-field">
+            <label for="wr-template">퍼즐 템플릿</label>
+            <select id="wr-template" class="landing-select"></select>
+          </div>
+          <p id="wr-readonly-note" class="wr-readonly-note" hidden>방장만 설정을 바꿀 수 있어요</p>
+        </div>
+      </div>
+
+      <div id="wr-starting" class="wr-starting" hidden>
+        <p class="landing-placeholder-text">게임이 곧 시작됩니다! 배틀/협동 실제 플레이는 다음 업데이트에서 이어집니다 🚧</p>
+      </div>
+
+      <p id="wr-error" class="landing-error"></p>
+
+      <div class="wr-actions">
+        <button id="btn-wr-start" class="landing-btn landing-btn-primary" type="button" hidden>게임 시작</button>
+        <p id="wr-waiting-note" class="wr-waiting-note" hidden>방장이 시작하길 기다리는 중...</p>
+        <button id="btn-wr-leave" class="landing-back" type="button">나가기</button>
       </div>
     </div>
   </div>

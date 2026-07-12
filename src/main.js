@@ -8,6 +8,7 @@ import { Keypad } from './ui/Keypad.js';
 import { PUZZLES } from './puzzles/index.js';
 import { templates as GENERATE_TEMPLATES } from './generator/templates/index.js';
 import { generatePuzzle } from './generator/generatePuzzle.js';
+import * as roomClient from './net/roomClient.js';
 
 const svg          = document.getElementById('sudoku-svg');
 const boardPanel   = document.getElementById('board-panel');
@@ -48,14 +49,44 @@ const landingScreen      = document.getElementById('landing-screen');
 const gameScreen         = document.getElementById('game-screen');
 const landingMain        = document.getElementById('landing-main');
 const landingMulti       = document.getElementById('landing-multi');
-const landingPlaceholder = document.getElementById('landing-placeholder');
+const landingCreate      = document.getElementById('landing-create');
+const landingJoin        = document.getElementById('landing-join');
 const btnLandingSingle   = document.getElementById('btn-landing-single');
 const btnLandingMulti    = document.getElementById('btn-landing-multi');
 const btnMpCreate        = document.getElementById('btn-mp-create');
 const btnMpJoin          = document.getElementById('btn-mp-join');
 const btnMpBack          = document.getElementById('btn-mp-back');
-const btnPlaceholderBack = document.getElementById('btn-placeholder-back');
 const btnGoLanding       = document.getElementById('btn-go-landing');
+
+const lcNickname    = document.getElementById('lc-nickname');
+const lcModeBattle  = document.getElementById('lc-mode-battle');
+const lcModeCoop    = document.getElementById('lc-mode-coop');
+const lcMaxPlayers  = document.getElementById('lc-max-players');
+const lcTemplate    = document.getElementById('lc-template');
+const lcError       = document.getElementById('lc-error');
+const btnLcSubmit   = document.getElementById('btn-lc-submit');
+const btnLcBack     = document.getElementById('btn-lc-back');
+
+const ljNickname   = document.getElementById('lj-nickname');
+const ljCode       = document.getElementById('lj-code');
+const ljError      = document.getElementById('lj-error');
+const btnLjSubmit  = document.getElementById('btn-lj-submit');
+const btnLjBack    = document.getElementById('btn-lj-back');
+
+const waitingRoomScreen = document.getElementById('waiting-room-screen');
+const wrCode            = document.getElementById('wr-code');
+const wrPlayerList      = document.getElementById('wr-player-list');
+const wrModeBattle      = document.getElementById('wr-mode-battle');
+const wrModeCoop        = document.getElementById('wr-mode-coop');
+const wrMaxPlayers      = document.getElementById('wr-max-players');
+const wrTemplate        = document.getElementById('wr-template');
+const wrReadonlyNote    = document.getElementById('wr-readonly-note');
+const wrBody            = document.getElementById('wr-body');
+const wrStarting        = document.getElementById('wr-starting');
+const wrError           = document.getElementById('wr-error');
+const btnWrStart        = document.getElementById('btn-wr-start');
+const wrWaitingNote     = document.getElementById('wr-waiting-note');
+const btnWrLeave        = document.getElementById('btn-wr-leave');
 
 // ── 보드 조립 ──
 const initialPuzzle = PUZZLES.find((p) => p.id === 'test_overlap4') || PUZZLES[0];
@@ -330,8 +361,8 @@ function toggleGeneratePanel() {
 btnOpenGenerate.addEventListener('click', toggleGeneratePanel);
 generateClose.addEventListener('click', () => closePanel(generatePanel));
 
-// ── 랜딩 / 게임 화면 전환 ──
-const LANDING_SUBVIEWS = [landingMain, landingMulti, landingPlaceholder];
+// ── 랜딩 / 게임 / 대기실 화면 전환 ──
+const LANDING_SUBVIEWS = [landingMain, landingMulti, landingCreate, landingJoin];
 
 function showLandingSub(target) {
   for (const el of LANDING_SUBVIEWS) el.hidden = (el !== target);
@@ -341,26 +372,282 @@ function isGameActive() {
   return !gameScreen.classList.contains('hidden');
 }
 
-function enterGame() {
-  gameScreen.classList.remove('hidden');
+function hideAllTopScreens() {
   landingScreen.classList.add('hidden');
+  gameScreen.classList.add('hidden');
+  waitingRoomScreen.classList.add('hidden');
+}
+
+function enterGame() {
+  hideAllTopScreens();
+  gameScreen.classList.remove('hidden');
+}
+
+function enterLandingAt(subview) {
+  hideAllTopScreens();
+  landingScreen.classList.remove('hidden');
+  showLandingSub(subview);
 }
 
 function enterLanding() {
-  landingScreen.classList.remove('hidden');
-  gameScreen.classList.add('hidden');
-  showLandingSub(landingMain);
+  if (mp) leaveCurrentRoom(); // 대기실에 있던 상태로 메인 화면으로 돌아가면 방도 함께 나감(현재는 도달 불가 경로지만 향후 배틀/협동 화면 전환 대비)
+  enterLandingAt(landingMain);
+}
+
+function enterWaitingRoom() {
+  hideAllTopScreens();
+  waitingRoomScreen.classList.remove('hidden');
 }
 
 btnLandingSingle.addEventListener('click', enterGame);
 btnLandingMulti.addEventListener('click', () => showLandingSub(landingMulti));
-btnMpCreate.addEventListener('click', () => showLandingSub(landingPlaceholder));
-btnMpJoin.addEventListener('click', () => showLandingSub(landingPlaceholder));
+btnMpCreate.addEventListener('click', () => { prefillNickname(lcNickname); showFormError(lcError, ''); showLandingSub(landingCreate); });
+btnMpJoin.addEventListener('click', () => { prefillNickname(ljNickname); showFormError(ljError, ''); showLandingSub(landingJoin); });
 btnMpBack.addEventListener('click', () => showLandingSub(landingMain));
-btnPlaceholderBack.addEventListener('click', () => showLandingSub(landingMulti));
+btnLcBack.addEventListener('click', () => showLandingSub(landingMulti));
+btnLjBack.addEventListener('click', () => showLandingSub(landingMulti));
 btnGoLanding.addEventListener('click', () => {
   askConfirm('메인 화면으로 돌아갈까요?', enterLanding);
 });
+
+// ── 멀티플레이 ──
+const NICKNAME_STORAGE_KEY = 'sudoku-nickname';
+
+function loadSavedNickname() {
+  try { return localStorage.getItem(NICKNAME_STORAGE_KEY) || ''; } catch { return ''; }
+}
+function saveNickname(nickname) {
+  try { localStorage.setItem(NICKNAME_STORAGE_KEY, nickname); } catch { /* 저장 실패해도 게임 진행엔 지장 없음 */ }
+}
+function prefillNickname(input) {
+  input.value = loadSavedNickname();
+}
+
+function populateTemplateSelect(select) {
+  select.innerHTML = '';
+  for (const t of GENERATE_TEMPLATES) {
+    const opt = document.createElement('option');
+    opt.value = t.id;
+    opt.textContent = t.label;
+    select.appendChild(opt);
+  }
+}
+populateTemplateSelect(lcTemplate);
+populateTemplateSelect(wrTemplate);
+
+function showFormError(el, message) {
+  el.textContent = message || '';
+  el.classList.toggle('show', !!message);
+}
+
+function setModeToggle(battleBtn, coopBtn, mode, { disabled = false } = {}) {
+  battleBtn.classList.toggle('active', mode === 'battle');
+  coopBtn.classList.toggle('active', mode === 'coop');
+  battleBtn.disabled = disabled;
+  coopBtn.disabled = disabled;
+}
+
+let lcMode = 'battle';
+lcModeBattle.addEventListener('click', () => { lcMode = 'battle'; setModeToggle(lcModeBattle, lcModeCoop, lcMode); });
+lcModeCoop.addEventListener('click', () => { lcMode = 'coop'; setModeToggle(lcModeBattle, lcModeCoop, lcMode); });
+
+let mp = null;             // { code, token, isHost, socket }
+let lastRoomState = null;  // 마지막으로 받은 roomState push (닉네임 편집 취소/설정 실패 시 복원용)
+let leavingIntentionally = false;
+
+function connectRoomSocket(code, token) {
+  return roomClient.connectSocket(code, token, {
+    onState: renderWaitingRoom,
+    onClose: () => {
+      if (leavingIntentionally) { leavingIntentionally = false; return; }
+      // 서버 재시작 등 예기치 않은 연결 끊김 - 조용히 방 목록 화면으로 복귀
+      mp = null;
+      lastRoomState = null;
+      enterLandingAt(landingMulti);
+    },
+  });
+}
+
+async function leaveCurrentRoom() {
+  if (!mp) return;
+  const { code, token, socket } = mp;
+  leavingIntentionally = true;
+  try { await roomClient.leaveRoom(code, token); } catch { /* 이미 사라졌을 수 있음 - 무시 */ }
+  if (socket && socket.readyState === WebSocket.OPEN) socket.close();
+  mp = null;
+  lastRoomState = null;
+}
+
+function enterRoom({ token, isHost, room }) {
+  mp = { code: room.code, token, isHost, socket: null };
+  mp.socket = connectRoomSocket(room.code, token);
+  enterWaitingRoom();
+  renderWaitingRoom(room); // 최초 push 도착 전 화면 깜빡임 방지용 즉시 렌더
+}
+
+btnLcSubmit.addEventListener('click', async () => {
+  showFormError(lcError, '');
+  const nickname = lcNickname.value.trim();
+  if (!nickname) { showFormError(lcError, '닉네임을 입력해주세요.'); return; }
+  saveNickname(nickname);
+
+  btnLcSubmit.disabled = true;
+  btnLcSubmit.textContent = '생성 중...';
+  try {
+    const result = await roomClient.createRoom({
+      nickname,
+      mode: lcMode,
+      maxPlayers: Number(lcMaxPlayers.value),
+      templateId: lcTemplate.value,
+    });
+    enterRoom(result);
+  } catch (err) {
+    showFormError(lcError, err.message);
+  } finally {
+    btnLcSubmit.disabled = false;
+    btnLcSubmit.textContent = '방 생성';
+  }
+});
+
+btnLjSubmit.addEventListener('click', async () => {
+  showFormError(ljError, '');
+  const nickname = ljNickname.value.trim();
+  const code = ljCode.value.trim();
+  if (!nickname) { showFormError(ljError, '닉네임을 입력해주세요.'); return; }
+  if (!/^\d{4}$/.test(code)) { showFormError(ljError, '4자리 방 코드를 입력해주세요.'); return; }
+  saveNickname(nickname);
+
+  btnLjSubmit.disabled = true;
+  btnLjSubmit.textContent = '참가 중...';
+  try {
+    const result = await roomClient.joinRoom(code, { nickname });
+    enterRoom(result);
+  } catch (err) {
+    showFormError(ljError, err.message);
+  } finally {
+    btnLjSubmit.disabled = false;
+    btnLjSubmit.textContent = '참가';
+  }
+});
+
+function startNicknameEdit(row, currentNickname) {
+  row.innerHTML = '';
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'wr-nickname-input';
+  input.maxLength = 20;
+  input.value = currentNickname;
+  row.appendChild(input);
+  input.focus();
+  input.select();
+
+  const commit = async () => {
+    const value = input.value.trim();
+    if (value && value !== currentNickname && mp) {
+      saveNickname(value);
+      try {
+        await roomClient.updateNickname(mp.code, mp.token, value);
+      } catch (err) {
+        showFormError(wrError, err.message);
+      }
+    }
+    if (lastRoomState) renderWaitingRoom(lastRoomState);
+  };
+
+  input.addEventListener('blur', commit);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') input.blur();
+    if (e.key === 'Escape') { input.value = currentNickname; input.blur(); }
+  });
+}
+
+async function applySettingChange(partial) {
+  if (!mp || !mp.isHost) return;
+  showFormError(wrError, '');
+  try {
+    await roomClient.updateSettings(mp.code, mp.token, partial);
+  } catch (err) {
+    showFormError(wrError, err.message);
+    if (lastRoomState) renderWaitingRoom(lastRoomState); // 실패 시 폼을 서버 기준 값으로 되돌림
+  }
+}
+
+wrModeBattle.addEventListener('click', () => applySettingChange({ mode: 'battle' }));
+wrModeCoop.addEventListener('click', () => applySettingChange({ mode: 'coop' }));
+wrMaxPlayers.addEventListener('change', () => applySettingChange({ maxPlayers: Number(wrMaxPlayers.value) }));
+wrTemplate.addEventListener('change', () => applySettingChange({ templateId: wrTemplate.value }));
+
+btnWrStart.addEventListener('click', async () => {
+  if (!mp) return;
+  showFormError(wrError, '');
+  btnWrStart.disabled = true;
+  try {
+    await roomClient.startRoom(mp.code, mp.token);
+  } catch (err) {
+    showFormError(wrError, err.message);
+  } finally {
+    btnWrStart.disabled = false;
+  }
+});
+
+btnWrLeave.addEventListener('click', async () => {
+  btnWrLeave.disabled = true;
+  await leaveCurrentRoom();
+  btnWrLeave.disabled = false;
+  enterLandingAt(landingMulti);
+});
+
+function renderWaitingRoom(room) {
+  if (!mp) return; // 이미 나간 뒤 도착한 지연 push 방어
+  lastRoomState = room;
+  wrCode.textContent = room.code;
+
+  const isHost = room.you?.isHost ?? false;
+  mp.isHost = isHost;
+
+  wrPlayerList.innerHTML = '';
+  for (const p of room.players) {
+    const row = document.createElement('div');
+    row.className = 'wr-player-row';
+    const isMe = p.id === room.you?.id;
+
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'wr-player-nickname';
+    nameSpan.textContent = p.nickname;
+    row.appendChild(nameSpan);
+
+    if (p.isHost) {
+      const badge = document.createElement('span');
+      badge.className = 'wr-host-badge';
+      badge.textContent = '방장';
+      row.appendChild(badge);
+    }
+
+    if (isMe) {
+      const editBtn = document.createElement('button');
+      editBtn.type = 'button';
+      editBtn.className = 'wr-nickname-edit-btn';
+      editBtn.textContent = '✎';
+      editBtn.addEventListener('click', () => startNicknameEdit(row, p.nickname));
+      row.appendChild(editBtn);
+    }
+
+    wrPlayerList.appendChild(row);
+  }
+
+  setModeToggle(wrModeBattle, wrModeCoop, room.mode, { disabled: !isHost });
+  wrMaxPlayers.value = room.maxPlayers;
+  wrMaxPlayers.disabled = !isHost;
+  wrTemplate.value = room.templateId;
+  wrTemplate.disabled = !isHost;
+  wrReadonlyNote.hidden = isHost;
+
+  const playing = room.status === 'playing';
+  wrBody.hidden = playing;
+  wrStarting.hidden = !playing;
+  btnWrStart.hidden = !isHost || playing;
+  wrWaitingNote.hidden = isHost || playing;
+}
 
 // ── 타이머 ──
 let timerEnabled   = false;
