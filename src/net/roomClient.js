@@ -34,8 +34,16 @@ export function updateSettings(code, token, settings) {
   return request('POST', `/api/rooms/${code}/settings`, { token, body: settings });
 }
 
-export function startRoom(code, token) {
-  return request('POST', `/api/rooms/${code}/start`, { token });
+export function startRoom(code, token, { puzzle } = {}) {
+  return request('POST', `/api/rooms/${code}/start`, { token, body: { puzzle } });
+}
+
+export function finishRoom(code, token) {
+  return request('POST', `/api/rooms/${code}/finish`, { token });
+}
+
+export function forfeitRoom(code, token) {
+  return request('POST', `/api/rooms/${code}/forfeit`, { token });
 }
 
 export function leaveRoom(code, token) {

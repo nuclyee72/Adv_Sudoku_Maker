@@ -71,6 +71,7 @@
       <div class="wr-code-row">
         <span class="wr-code-label">방 코드</span>
         <span id="wr-code" class="wr-code">0000</span>
+        <button id="btn-wr-copy-code" class="wr-copy-btn" type="button">복사</button>
       </div>
 
       <div id="wr-body" class="wr-body">
@@ -122,6 +123,25 @@
     </div>
     <div id="board-start-overlay" class="board-start-overlay">
       <button id="btn-start-timer" class="btn-start-timer" type="button">시작</button>
+    </div>
+    <div id="battle-countdown-overlay" class="battle-countdown-overlay hidden">
+      <span id="battle-countdown-number" class="battle-countdown-number">3</span>
+    </div>
+  </div>
+
+  <!-- 배틀 모드 리더보드 -->
+  <div id="battle-leaderboard" class="battle-leaderboard hidden">
+    <div id="battle-leaderboard-list" class="battle-leaderboard-list"></div>
+  </div>
+
+  <!-- 배틀 모드 종료 오버레이 -->
+  <div id="battle-ended-overlay" class="modal-overlay">
+    <div class="modal-card battle-ended-card">
+      <h2 class="floating-panel-title">게임 종료!</h2>
+      <div id="battle-ended-list" class="battle-leaderboard-list"></div>
+      <div class="modal-actions">
+        <button id="btn-battle-ended-leave" class="modal-btn modal-btn-cancel" type="button">메인 화면으로</button>
+      </div>
     </div>
   </div>
 

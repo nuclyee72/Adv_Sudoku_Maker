@@ -7,8 +7,10 @@
  */
 import { gen_overlap_ineq_cons } from './gen_overlap_ineq_cons.js';
 import { gen_staircase_ineq_snake_turntable_cons } from './gen_staircase_ineq_snake_turntable_cons.js';
+import { gen_simple9x9 } from './gen_simple9x9.js';
 
 export const templates = [
+  gen_simple9x9,
   gen_overlap_ineq_cons,
   gen_staircase_ineq_snake_turntable_cons,
 ];

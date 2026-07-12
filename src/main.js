@@ -9,6 +9,7 @@ import { PUZZLES } from './puzzles/index.js';
 import { templates as GENERATE_TEMPLATES } from './generator/templates/index.js';
 import { generatePuzzle } from './generator/generatePuzzle.js';
 import * as roomClient from './net/roomClient.js';
+import { reviveStructures } from './puzzles/reviveStructures.js';
 
 const svg          = document.getElementById('sudoku-svg');
 const boardPanel   = document.getElementById('board-panel');
@@ -87,6 +88,15 @@ const wrError           = document.getElementById('wr-error');
 const btnWrStart        = document.getElementById('btn-wr-start');
 const wrWaitingNote     = document.getElementById('wr-waiting-note');
 const btnWrLeave        = document.getElementById('btn-wr-leave');
+const btnWrCopyCode     = document.getElementById('btn-wr-copy-code');
+
+const battleLeaderboard      = document.getElementById('battle-leaderboard');
+const battleLeaderboardList  = document.getElementById('battle-leaderboard-list');
+const battleCountdownOverlay = document.getElementById('battle-countdown-overlay');
+const battleCountdownNumber  = document.getElementById('battle-countdown-number');
+const battleEndedOverlay    = document.getElementById('battle-ended-overlay');
+const battleEndedList       = document.getElementById('battle-ended-list');
+const btnBattleEndedLeave   = document.getElementById('btn-battle-ended-leave');
 
 // ── 보드 조립 ──
 const initialPuzzle = PUZZLES.find((p) => p.id === 'test_overlap4') || PUZZLES[0];
@@ -278,13 +288,18 @@ document.querySelectorAll('.load-btn').forEach((btn) => {
 });
 
 // ── 퍼즐 선택 ──
-function loadPuzzle(puzzle) {
+/** structures/givens로 새 Board를 만들어 렌더러에 장착한다 (싱글플레이/배틀 공용) */
+function mountBoard(structures, givens) {
   board = new Board();
-  board.addStructures(puzzle.structures);
-  board.loadGivens(puzzle.givens);
+  board.addStructures(structures);
+  board.loadGivens(givens);
   renderer.loadBoard(board);
   fitAndCenterBoard();
   renderer.selectFirstCell();
+}
+
+function loadPuzzle(puzzle) {
+  mountBoard(puzzle.structures, puzzle.givens);
   activePuzzleId = puzzle.id;
   clearAllSaveSlots();
   refreshSaveSlots(); // 세이브 패널이 이미 열려있어도 즉시 "비어있음"으로 반영
@@ -390,7 +405,8 @@ function enterLandingAt(subview) {
 }
 
 function enterLanding() {
-  if (mp) leaveCurrentRoom(); // 대기실에 있던 상태로 메인 화면으로 돌아가면 방도 함께 나감(현재는 도달 불가 경로지만 향후 배틀/협동 화면 전환 대비)
+  exitBattleUI();
+  if (mp) leaveCurrentRoom(); // 대기실/배틀에 있던 상태로 메인 화면으로 돌아가면 방도 함께 나감
   enterLandingAt(landingMain);
 }
 
@@ -407,6 +423,18 @@ btnMpBack.addEventListener('click', () => showLandingSub(landingMain));
 btnLcBack.addEventListener('click', () => showLandingSub(landingMulti));
 btnLjBack.addEventListener('click', () => showLandingSub(landingMulti));
 btnGoLanding.addEventListener('click', () => {
+  if (battleActive && !battleFinishedLocally) {
+    askConfirm('항복하고 나갈까요?<br/>순위에는 들지 못해요.', async () => {
+      if (mp) {
+        try { await roomClient.forfeitRoom(mp.code, mp.token); } catch (err) { console.error(err); }
+      }
+      // 방은 그대로 유지(소켓도 유지) - 다른 참가자의 리더보드/종료 결과에 "항복"으로 계속 보이도록.
+      // 게임이 끝나면 handleRoomPush가 조용히 정리한다.
+      exitBattleUI();
+      enterLandingAt(landingMulti);
+    });
+    return;
+  }
   askConfirm('메인 화면으로 돌아갈까요?', enterLanding);
 });
 
@@ -457,7 +485,7 @@ let leavingIntentionally = false;
 
 function connectRoomSocket(code, token) {
   return roomClient.connectSocket(code, token, {
-    onState: renderWaitingRoom,
+    onState: handleRoomPush,
     onClose: () => {
       if (leavingIntentionally) { leavingIntentionally = false; return; }
       // 서버 재시작 등 예기치 않은 연결 끊김 - 조용히 방 목록 화면으로 복귀
@@ -479,6 +507,7 @@ async function leaveCurrentRoom() {
 }
 
 function enterRoom({ token, isHost, room }) {
+  if (mp?.socket) mp.socket.close(); // 이전에 항복하고 남아있던 소켓이 있다면 정리
   mp = { code: room.code, token, isHost, socket: null };
   mp.socket = connectRoomSocket(room.code, token);
   enterWaitingRoom();
@@ -578,15 +607,26 @@ wrMaxPlayers.addEventListener('change', () => applySettingChange({ maxPlayers: N
 wrTemplate.addEventListener('change', () => applySettingChange({ templateId: wrTemplate.value }));
 
 btnWrStart.addEventListener('click', async () => {
-  if (!mp) return;
+  if (!mp || !lastRoomState) return;
   showFormError(wrError, '');
   btnWrStart.disabled = true;
   try {
-    await roomClient.startRoom(mp.code, mp.token);
+    if (lastRoomState.mode === 'battle') {
+      btnWrStart.textContent = '생성 중...';
+      const template = GENERATE_TEMPLATES.find((t) => t.id === lastRoomState.templateId);
+      if (!template) throw new Error('선택된 템플릿을 찾을 수 없어요.');
+      const puzzle = await generatePuzzle(template);
+      await roomClient.startRoom(mp.code, mp.token, {
+        puzzle: { structures: puzzle.structures, givens: puzzle.givens },
+      });
+    } else {
+      await roomClient.startRoom(mp.code, mp.token);
+    }
   } catch (err) {
     showFormError(wrError, err.message);
   } finally {
     btnWrStart.disabled = false;
+    btnWrStart.textContent = '게임 시작';
   }
 });
 
@@ -595,6 +635,44 @@ btnWrLeave.addEventListener('click', async () => {
   await leaveCurrentRoom();
   btnWrLeave.disabled = false;
   enterLandingAt(landingMulti);
+});
+
+/**
+ * navigator.clipboard는 보안 컨텍스트(https 또는 localhost)에서만 존재한다.
+ * LAN IP(http://192.168.x.x 등)로 접속한 경우처럼 그 외 상황엔 없거나 던질 수 있어
+ * 임시 textarea + execCommand('copy') 폴백으로 대응한다.
+ */
+async function copyText(text) {
+  if (navigator.clipboard && window.isSecureContext) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch (err) {
+      console.error(err);
+    }
+  }
+  try {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(textarea);
+    return ok;
+  } catch (err) {
+    console.error(err);
+    return false;
+  }
+}
+
+btnWrCopyCode.addEventListener('click', async () => {
+  if (!mp) return;
+  const ok = await copyText(mp.code);
+  btnWrCopyCode.textContent = ok ? '복사됨!' : '복사 실패';
+  setTimeout(() => { btnWrCopyCode.textContent = '복사'; }, 1500);
 });
 
 function renderWaitingRoom(room) {
@@ -648,6 +726,185 @@ function renderWaitingRoom(room) {
   btnWrStart.hidden = !isHost || playing;
   wrWaitingNote.hidden = isHost || playing;
 }
+
+// ── 배틀 모드 ──
+let battleActive = false;          // 지금 배틀 게임 화면에 들어와 있는지
+let battleFinishedLocally = false; // 이번 배틀에서 이미 완주 보고를 했는지 (중복 보고 방지)
+let battleRAF = null;
+let battleCountdownRAF = null;
+
+/** roomState push를 받을 때마다: 방 상태에 따라 대기실/배틀 화면 중 어디를 갱신할지 정한다 */
+function handleRoomPush(room) {
+  if (!mp) return;
+  mp.isHost = room.you?.isHost ?? mp.isHost;
+
+  if (room.status === 'ended') {
+    lastRoomState = room;
+    if (battleActive) {
+      showBattleEndedOverlay(room);
+    } else {
+      // 항복 등으로 이미 배틀 화면을 벗어난 상태(랜딩에 있음) - 볼 화면이 없으므로 방 연결만 조용히 정리
+      leaveCurrentRoom();
+    }
+    return;
+  }
+
+  if (room.mode === 'battle' && room.status === 'playing') {
+    lastRoomState = room;
+    if (!battleActive) enterBattleGame(room);
+    return; // 이미 배틀 중이면 rAF 루프가 lastRoomState를 계속 읽어 그리므로 별도 렌더 불필요
+  }
+
+  renderWaitingRoom(room);
+}
+
+function setBattleControlsDisabled(disabled) {
+  btnOpenPuzzle.disabled = disabled;
+  btnOpenGenerate.disabled = disabled;
+  btnOpenSave.disabled = disabled;
+  timerToggleBtn.disabled = disabled;
+}
+
+/** 배틀 시작 카운트다운 — 서버가 정한 미래 시각(playingStartedAt)까지 전원 동시에 센다 */
+function startBattleCountdown(playingStartedAt) {
+  stopBattleCountdown();
+  const remaining = playingStartedAt - Date.now();
+  if (remaining <= 0) return; // 이미 시작 시각이 지남(늦게 입장 등) - 카운트다운 없이 바로 시작
+
+  boardLocked = true;
+  boardWrapper.classList.add('blurred');
+  battleCountdownOverlay.classList.remove('hidden');
+
+  function frame() {
+    const left = playingStartedAt - Date.now();
+    if (left <= 0) { stopBattleCountdown(); return; }
+    battleCountdownNumber.textContent = String(Math.ceil(left / 1000));
+    battleCountdownRAF = requestAnimationFrame(frame);
+  }
+  frame();
+}
+
+function stopBattleCountdown() {
+  if (battleCountdownRAF !== null) { cancelAnimationFrame(battleCountdownRAF); battleCountdownRAF = null; }
+  boardLocked = false;
+  boardWrapper.classList.remove('blurred');
+  battleCountdownOverlay.classList.add('hidden');
+}
+
+/** 배틀 화면에서 벗어날 때(항복/완주 후 나가기/게임 종료) 공통 정리 */
+function exitBattleUI() {
+  battleActive = false;
+  battleFinishedLocally = false;
+  stopBattleLeaderboardLoop();
+  stopBattleCountdown();
+  battleLeaderboard.classList.add('hidden');
+  closePanel(battleEndedOverlay);
+  setBattleControlsDisabled(false);
+}
+
+function enterBattleGame(room) {
+  const structures = reviveStructures(room.puzzle.structures);
+  mountBoard(structures, room.puzzle.givens);
+
+  // 싱글플레이용 연습 타이머(블러+시작 오버레이)는 배틀과 무관하므로 완전히 꺼둔다
+  timerEnabled = false;
+  timerToggleBtn.classList.remove('active');
+  timerDisplay.classList.remove('show');
+  disarmTimer();
+
+  setBattleControlsDisabled(true);
+  enterGame();
+
+  battleActive = true;
+  battleFinishedLocally = false;
+  battleLeaderboard.classList.remove('hidden');
+  renderBattleLeaderboard(room);
+  startBattleLeaderboardLoop();
+  startBattleCountdown(room.playingStartedAt); // 이미 시작 시각이 지났으면 내부에서 알아서 스킵
+}
+
+function renderBattleLeaderboardInto(listEl, room, { showUnfinishedAsDNF = false } = {}) {
+  if (!room || !room.playingStartedAt) return;
+  const now = Date.now();
+  const finished = room.players.filter((p) => p.gameStatus === 'finished').sort((a, b) => a.elapsedMs - b.elapsedMs);
+  const playing = room.players.filter((p) => p.gameStatus === 'playing');
+  const forfeited = room.players.filter((p) => p.gameStatus === 'forfeited');
+  const ordered = [...finished, ...playing, ...forfeited];
+
+  listEl.innerHTML = '';
+  for (const p of ordered) {
+    const row = document.createElement('div');
+    row.className = 'battle-leaderboard-row';
+
+    let rankText = '';
+    let timerText;
+    if (p.gameStatus === 'finished') {
+      rankText = String(finished.indexOf(p) + 1);
+      timerText = formatTimer(p.elapsedMs ?? 0);
+      row.classList.add('battle-finished');
+    } else if (p.gameStatus === 'forfeited') {
+      timerText = '항복';
+      row.classList.add('battle-forfeited');
+    } else {
+      timerText = showUnfinishedAsDNF ? '미완주' : formatTimer(Math.max(0, now - room.playingStartedAt));
+    }
+
+    const rank = document.createElement('span');
+    rank.className = 'battle-rank';
+    rank.textContent = rankText;
+    row.appendChild(rank);
+
+    const name = document.createElement('span');
+    name.className = 'battle-nickname';
+    name.textContent = p.nickname;
+    row.appendChild(name);
+
+    const timer = document.createElement('span');
+    timer.className = 'battle-timer';
+    timer.textContent = timerText;
+    row.appendChild(timer);
+
+    listEl.appendChild(row);
+  }
+}
+
+function renderBattleLeaderboard(room) {
+  renderBattleLeaderboardInto(battleLeaderboardList, room);
+}
+
+function battleLeaderboardFrame() {
+  if (!battleActive) return;
+  if (lastRoomState) renderBattleLeaderboard(lastRoomState);
+  battleRAF = requestAnimationFrame(battleLeaderboardFrame);
+}
+
+function startBattleLeaderboardLoop() {
+  stopBattleLeaderboardLoop();
+  battleRAF = requestAnimationFrame(battleLeaderboardFrame);
+}
+
+function stopBattleLeaderboardLoop() {
+  if (battleRAF !== null) { cancelAnimationFrame(battleRAF); battleRAF = null; }
+}
+
+function showBattleEndedOverlay(room) {
+  stopBattleLeaderboardLoop();
+  battleActive = false;
+  renderBattleLeaderboardInto(battleEndedList, room, { showUnfinishedAsDNF: true });
+  openPanel(battleEndedOverlay);
+}
+
+btnBattleEndedLeave.addEventListener('click', async () => {
+  exitBattleUI();
+  await leaveCurrentRoom();
+  enterLandingAt(landingMulti);
+});
+
+document.addEventListener('sudoku:solved', () => {
+  if (!battleActive || battleFinishedLocally || !mp) return;
+  battleFinishedLocally = true;
+  roomClient.finishRoom(mp.code, mp.token).catch((err) => console.error(err));
+});
 
 // ── 타이머 ──
 let timerEnabled   = false;

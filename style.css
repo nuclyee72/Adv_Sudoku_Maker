@@ -233,6 +233,28 @@ html, body {
   color: var(--text-input);
 }
 
+.wr-copy-btn {
+  height: 28px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 8px;
+  background: #f0f1f4;
+  color: var(--text-given);
+  font-family: 'Outfit', 'Inter', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.08s ease;
+}
+
+.wr-copy-btn:hover {
+  background: #e6e7ec;
+}
+
+.wr-copy-btn:active {
+  transform: scale(0.95);
+}
+
 .wr-body {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -409,6 +431,108 @@ html, body {
 
 .btn-start-timer:active {
   transform: scale(0.96);
+}
+
+/* ── 배틀 모드 시작 카운트다운 ── */
+.battle-countdown-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.battle-countdown-overlay.hidden {
+  display: none;
+}
+
+.battle-countdown-number {
+  font-family: 'Outfit', 'Inter', sans-serif;
+  font-size: 140px;
+  font-weight: 700;
+  color: var(--text-input);
+  text-shadow: 0 16px 40px rgba(20, 24, 40, 0.28);
+}
+
+/* ── 배틀 모드 리더보드 ── */
+.battle-leaderboard {
+  position: fixed;
+  top: 24px;
+  right: 24px;
+  z-index: 10;
+  width: 220px;
+  padding: 16px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow: 0 12px 40px rgba(20, 24, 40, 0.14);
+}
+
+.battle-leaderboard.hidden {
+  display: none;
+}
+
+.battle-leaderboard-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.battle-leaderboard-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 10px;
+  border-radius: 10px;
+  background: #f7f8fa;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-given);
+}
+
+.battle-leaderboard-row.battle-finished {
+  background: var(--cell-selected);
+  color: var(--text-sel);
+}
+
+.battle-leaderboard-row.battle-forfeited {
+  opacity: 0.55;
+}
+
+.battle-rank {
+  flex: 0 0 auto;
+  width: 18px;
+  font-family: 'Outfit', 'Inter', sans-serif;
+  font-weight: 700;
+  text-align: center;
+}
+
+.battle-nickname {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.battle-timer {
+  flex: 0 0 auto;
+  font-family: 'Outfit', 'Inter', sans-serif;
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+}
+
+.battle-ended-card {
+  width: 340px;
+}
+
+.battle-ended-card .battle-leaderboard-list {
+  margin: 4px 0 20px;
 }
 
 #sudoku-svg {

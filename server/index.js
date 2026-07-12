@@ -9,7 +9,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.join(__dirname, '..');
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: '2mb' })); // 배틀 모드 퍼즐 업로드(structures+givens)가 기본 100kb 한도를 넘을 수 있음
 app.use(express.static(REPO_ROOT));
 
 const server = http.createServer(app);
@@ -154,7 +154,30 @@ app.post('/api/rooms/:code/settings', (req, res) => {
 app.post('/api/rooms/:code/start', (req, res) => {
   try {
     const token = getToken(req);
-    const state = rooms.startRoom(req.params.code, token);
+    const { puzzle } = req.body ?? {};
+    const state = rooms.startRoom(req.params.code, token, { puzzle });
+    broadcastRoomState(req.params.code);
+    res.json(state);
+  } catch (err) {
+    handleRoomError(res, err);
+  }
+});
+
+app.post('/api/rooms/:code/finish', (req, res) => {
+  try {
+    const token = getToken(req);
+    const state = rooms.finishRoom(req.params.code, token);
+    broadcastRoomState(req.params.code);
+    res.json(state);
+  } catch (err) {
+    handleRoomError(res, err);
+  }
+});
+
+app.post('/api/rooms/:code/forfeit', (req, res) => {
+  try {
+    const token = getToken(req);
+    const state = rooms.forfeitRoom(req.params.code, token);
     broadcastRoomState(req.params.code);
     res.json(state);
   } catch (err) {
