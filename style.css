@@ -31,6 +31,110 @@ html, body {
   touch-action: none;
 }
 
+/* ── 랜딩 화면 (싱글/멀티플레이 진입) ── */
+.landing-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(160deg, #eef4f0, #ffffff 60%);
+}
+
+.landing-screen.hidden {
+  display: none;
+}
+
+.landing-card {
+  width: 340px;
+  padding: 48px 36px 40px;
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow: 0 24px 60px rgba(20, 24, 40, 0.18);
+  text-align: center;
+}
+
+.landing-title {
+  margin: 0 0 32px;
+  font-family: 'Outfit', 'Inter', sans-serif;
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--text-given);
+}
+
+.landing-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.landing-stack[hidden] {
+  display: none;
+}
+
+.landing-btn {
+  height: 56px;
+  border: none;
+  border-radius: 16px;
+  background: #f0f1f4;
+  color: var(--text-given);
+  font-family: 'Outfit', 'Inter', sans-serif;
+  font-size: 17px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(20, 24, 40, 0.08);
+  transition: transform 0.08s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.landing-btn:hover {
+  background: #e6e7ec;
+  box-shadow: 0 4px 10px rgba(20, 24, 40, 0.14);
+}
+
+.landing-btn:active {
+  transform: scale(0.97);
+}
+
+.landing-btn-primary {
+  background: var(--text-input);
+  color: #ffffff;
+}
+
+.landing-btn-primary:hover {
+  background: var(--text-sel);
+}
+
+.landing-back {
+  margin-top: 6px;
+  border: none;
+  background: none;
+  color: rgba(35, 39, 51, 0.55);
+  font-family: 'Outfit', 'Inter', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.landing-back:hover {
+  color: var(--text-given);
+}
+
+.landing-placeholder-text {
+  margin: 12px 0 24px;
+  color: rgba(35, 39, 51, 0.7);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+/* ── 게임 화면 (보드 + 키패드 + 각종 패널을 감싸는 컨테이너) ── */
+.game-screen.hidden {
+  display: none;
+}
+
 /* ── 스도쿠 판 (패널 없이 판만 떠 있음) ── */
 .board-panel {
   position: fixed;
@@ -206,6 +310,11 @@ html, body {
 }
 
 .kp-extra-help {
+  flex: 0 0 auto;
+  margin: 8px 16px 0;
+}
+
+.kp-extra-home {
   flex: 0 0 auto;
   margin: 8px 16px 16px;
 }

@@ -8,6 +8,31 @@
 </head>
 <body>
 
+  <!-- 랜딩 화면: 싱글플레이 / 멀티플레이 진입점 -->
+  <div id="landing-screen" class="landing-screen">
+    <div class="landing-card">
+      <h1 class="landing-title">변형 스도쿠</h1>
+
+      <div id="landing-main" class="landing-stack">
+        <button id="btn-landing-single" class="landing-btn landing-btn-primary" type="button">싱글플레이</button>
+        <button id="btn-landing-multi" class="landing-btn" type="button">멀티플레이</button>
+      </div>
+
+      <div id="landing-multi" class="landing-stack" hidden>
+        <button id="btn-mp-create" class="landing-btn landing-btn-primary" type="button">방 생성</button>
+        <button id="btn-mp-join" class="landing-btn" type="button">방 참가</button>
+        <button id="btn-mp-back" class="landing-back" type="button">‹ 뒤로</button>
+      </div>
+
+      <div id="landing-placeholder" class="landing-stack" hidden>
+        <p class="landing-placeholder-text">멀티플레이는 곧 추가될 예정입니다 🚧</p>
+        <button id="btn-placeholder-back" class="landing-back" type="button">‹ 뒤로</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="game-screen" class="game-screen hidden">
+
   <!-- 스도쿠 판 (패널 없이 판만 떠 있음) -->
   <div id="board-panel" class="board-panel">
     <div class="board-wrapper">
@@ -32,6 +57,7 @@
             <button id="btn-toggle-timer" class="kp-extra-btn" type="button">타이머</button>
           </div>
           <button id="btn-open-help" class="kp-extra-btn kp-extra-help" type="button">도움말</button>
+          <button id="btn-go-landing" class="kp-extra-btn kp-extra-home" type="button">메인 화면으로</button>
         </div>
       </div>
     </div>
@@ -121,6 +147,8 @@
       <li><span class="help-keys"><kbd>Esc</kbd></span><span class="help-desc">열린 창 닫기</span></li>
     </ul>
   </div>
+
+  </div><!-- /#game-screen -->
 
   <script type="module" src="src/main.js"></script>
 </body>

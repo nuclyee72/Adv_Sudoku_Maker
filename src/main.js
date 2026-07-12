@@ -44,6 +44,19 @@ const boardWrapper      = document.querySelector('.board-wrapper');
 const boardStartOverlay = document.getElementById('board-start-overlay');
 const btnStartTimer     = document.getElementById('btn-start-timer');
 
+const landingScreen      = document.getElementById('landing-screen');
+const gameScreen         = document.getElementById('game-screen');
+const landingMain        = document.getElementById('landing-main');
+const landingMulti       = document.getElementById('landing-multi');
+const landingPlaceholder = document.getElementById('landing-placeholder');
+const btnLandingSingle   = document.getElementById('btn-landing-single');
+const btnLandingMulti    = document.getElementById('btn-landing-multi');
+const btnMpCreate        = document.getElementById('btn-mp-create');
+const btnMpJoin          = document.getElementById('btn-mp-join');
+const btnMpBack          = document.getElementById('btn-mp-back');
+const btnPlaceholderBack = document.getElementById('btn-placeholder-back');
+const btnGoLanding       = document.getElementById('btn-go-landing');
+
 // ── 보드 조립 ──
 const initialPuzzle = PUZZLES.find((p) => p.id === 'test_overlap4') || PUZZLES[0];
 let activePuzzleId = initialPuzzle.id;
@@ -317,6 +330,38 @@ function toggleGeneratePanel() {
 btnOpenGenerate.addEventListener('click', toggleGeneratePanel);
 generateClose.addEventListener('click', () => closePanel(generatePanel));
 
+// ── 랜딩 / 게임 화면 전환 ──
+const LANDING_SUBVIEWS = [landingMain, landingMulti, landingPlaceholder];
+
+function showLandingSub(target) {
+  for (const el of LANDING_SUBVIEWS) el.hidden = (el !== target);
+}
+
+function isGameActive() {
+  return !gameScreen.classList.contains('hidden');
+}
+
+function enterGame() {
+  gameScreen.classList.remove('hidden');
+  landingScreen.classList.add('hidden');
+}
+
+function enterLanding() {
+  landingScreen.classList.remove('hidden');
+  gameScreen.classList.add('hidden');
+  showLandingSub(landingMain);
+}
+
+btnLandingSingle.addEventListener('click', enterGame);
+btnLandingMulti.addEventListener('click', () => showLandingSub(landingMulti));
+btnMpCreate.addEventListener('click', () => showLandingSub(landingPlaceholder));
+btnMpJoin.addEventListener('click', () => showLandingSub(landingPlaceholder));
+btnMpBack.addEventListener('click', () => showLandingSub(landingMain));
+btnPlaceholderBack.addEventListener('click', () => showLandingSub(landingMulti));
+btnGoLanding.addEventListener('click', () => {
+  askConfirm('메인 화면으로 돌아갈까요?', enterLanding);
+});
+
 // ── 타이머 ──
 let timerEnabled   = false;
 let timerRunning   = false;
@@ -403,6 +448,9 @@ document.addEventListener('sudoku:solved', () => {
 const ARROW_DIR = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
 
 window.addEventListener('keydown', (e) => {
+  // 0) 랜딩 화면에서는(게임 화면이 안 보이는 동안) 게임 조작 단축키를 전부 무시
+  if (!isGameActive()) return;
+
   // 1) 확인 모달이 떠 있으면 그 외 모든 단축키 차단, Esc/Enter만 처리
   if (confirmModal.classList.contains('show')) {
     if (e.key === 'Escape') cancelConfirm();
@@ -468,7 +516,7 @@ const WASD_DIR  = { w: [0, -1], a: [-1, 0], s: [0, 1], d: [1, 0] };
 const heldKeys  = new Set();
 
 window.addEventListener('keydown', (e) => {
-  if (confirmModal.classList.contains('show') || isFloatingPanelOpen()) return;
+  if (!isGameActive() || confirmModal.classList.contains('show') || isFloatingPanelOpen()) return;
   const k = e.key.toLowerCase();
   if (WASD_DIR[k]) heldKeys.add(k);
 });
