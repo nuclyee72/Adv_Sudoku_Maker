@@ -50,11 +50,16 @@ export function leaveRoom(code, token) {
   return request('POST', `/api/rooms/${code}/leave`, { token });
 }
 
+/** 협동 모드 - 로컬 저장 슬롯에서 불러온 스냅샷을 서버로 전송 (서버가 반영 후 전원에게 브로드캐스트) */
+export function coopLoad(code, token, { cells }) {
+  return request('POST', `/api/rooms/${code}/coop-load`, { token, body: { cells } });
+}
+
 /**
  * 방 상태 push를 받는 WebSocket 연결.
  * @returns {WebSocket} 호출측이 필요시 .close()로 명시적으로 나갈 수 있도록 소켓 인스턴스 반환
  */
-export function connectSocket(code, token, { onState, onClose } = {}) {
+export function connectSocket(code, token, { onState, onClose, onCoopCellUpdate, onCoopCursor, onCoopRotate } = {}) {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   const socket = new WebSocket(`${proto}//${location.host}/ws?code=${code}&token=${token}`);
 
@@ -66,6 +71,9 @@ export function connectSocket(code, token, { onState, onClose } = {}) {
       return;
     }
     if (msg.type === 'roomState' && onState) onState(msg.room);
+    else if (msg.type === 'coopCellUpdate' && onCoopCellUpdate) onCoopCellUpdate(msg);
+    else if (msg.type === 'coopCursor' && onCoopCursor) onCoopCursor(msg);
+    else if (msg.type === 'coopRotate' && onCoopRotate) onCoopRotate(msg);
   });
 
   socket.addEventListener('close', () => {
@@ -73,4 +81,22 @@ export function connectSocket(code, token, { onState, onClose } = {}) {
   });
 
   return socket;
+}
+
+/** 협동 모드 셀 입력 의도를 서버로 전송 (서버가 검증/반영 후 전원에게 브로드캐스트) */
+export function sendCoopEdit(socket, { row, col, value }) {
+  if (!socket || socket.readyState !== WebSocket.OPEN) return;
+  socket.send(JSON.stringify({ type: 'coopEdit', row, col, value }));
+}
+
+/** 협동 모드 커서 이동을 서버로 전송 (서버는 검증 없이 다른 참가자에게 relay) */
+export function sendCoopCursor(socket, { row, col }) {
+  if (!socket || socket.readyState !== WebSocket.OPEN) return;
+  socket.send(JSON.stringify({ type: 'coopCursor', row, col }));
+}
+
+/** 협동 모드 턴테이블 회전 의도를 서버로 전송 (서버가 적용 후 전원에게 브로드캐스트) */
+export function sendCoopRotate(socket, { originRow, originCol, steps }) {
+  if (!socket || socket.readyState !== WebSocket.OPEN) return;
+  socket.send(JSON.stringify({ type: 'coopRotate', originRow, originCol, steps }));
 }

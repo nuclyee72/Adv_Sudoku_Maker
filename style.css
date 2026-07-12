@@ -520,7 +520,8 @@ html, body {
   white-space: nowrap;
 }
 
-.battle-timer {
+.battle-timer,
+.coop-fill-count {
   flex: 0 0 auto;
   font-family: 'Outfit', 'Inter', sans-serif;
   font-variant-numeric: tabular-nums;
@@ -533,6 +534,16 @@ html, body {
 
 .battle-ended-card .battle-leaderboard-list {
   margin: 4px 0 20px;
+}
+
+.coop-ended-time {
+  font-family: 'Outfit', 'Inter', sans-serif;
+  font-variant-numeric: tabular-nums;
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-input);
+  text-align: center;
+  margin: 4px 0 12px;
 }
 
 #sudoku-svg {
@@ -688,6 +699,10 @@ html, body {
 .kp-extra-btn.active {
   background: var(--cell-selected);
   color: var(--text-sel);
+}
+
+.kp-extra-btn.hidden {
+  display: none;
 }
 
 .kp-panel-body {

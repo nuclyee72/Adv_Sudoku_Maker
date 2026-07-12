@@ -134,6 +134,11 @@
     <div id="battle-leaderboard-list" class="battle-leaderboard-list"></div>
   </div>
 
+  <!-- 협동 모드 진행 현황 -->
+  <div id="coop-leaderboard" class="battle-leaderboard hidden">
+    <div id="coop-leaderboard-list" class="battle-leaderboard-list"></div>
+  </div>
+
   <!-- 배틀 모드 종료 오버레이 -->
   <div id="battle-ended-overlay" class="modal-overlay">
     <div class="modal-card battle-ended-card">
@@ -141,6 +146,18 @@
       <div id="battle-ended-list" class="battle-leaderboard-list"></div>
       <div class="modal-actions">
         <button id="btn-battle-ended-leave" class="modal-btn modal-btn-cancel" type="button">메인 화면으로</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 협동 모드 종료 오버레이 -->
+  <div id="coop-ended-overlay" class="modal-overlay">
+    <div class="modal-card battle-ended-card">
+      <h2 class="floating-panel-title">🎉 다같이 완성!</h2>
+      <div id="coop-ended-time" class="coop-ended-time"></div>
+      <div id="coop-ended-list" class="battle-leaderboard-list"></div>
+      <div class="modal-actions">
+        <button id="btn-coop-ended-leave" class="modal-btn modal-btn-cancel" type="button">메인 화면으로</button>
       </div>
     </div>
   </div>

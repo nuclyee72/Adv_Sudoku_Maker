@@ -37,7 +37,9 @@ export class Turntable extends Structure {
       grid.push([]);
       for (let c = 0; c < n; c++) {
         const cell = board.getCell(this.originRow + r, this.originCol + c);
-        grid[r].push({ value: cell.value, isGiven: cell.isGiven, candidates: new Set(cell.candidates) });
+        // filledBy는 협동 모드 서버가 Cell 인스턴스에 얹어두는 부가 필드(core는 원래 모름) -
+        // 값/메모와 마찬가지로 칸의 내용물이므로 회전할 때 같이 옮겨줘야 "누가 채웠는지" 표시가 안 어긋난다.
+        grid[r].push({ value: cell.value, isGiven: cell.isGiven, candidates: new Set(cell.candidates), filledBy: cell.filledBy });
         changes.push({
           row: cell.row, col: cell.col,
           prevValue: cell.value, prevCandidates: [...cell.candidates], prevIsGiven: cell.isGiven,
@@ -62,6 +64,7 @@ export class Turntable extends Structure {
         cell.value = s.value;
         cell.isGiven = s.isGiven;
         cell.candidates = s.candidates;
+        cell.filledBy = s.filledBy;
       }
     }
 

@@ -18,6 +18,34 @@ const wss = new WebSocketServer({ server, path: '/ws' });
 // code -> Set<WebSocket>, 소켓마다 ws.playerToken/ws.roomCode를 붙여서 추적
 const roomSockets = new Map();
 
+// "code:token" -> setTimeout id. 소켓이 끊겨도 곧바로 방을 나간 것으로 처리하지 않고
+// 잠깐 유예를 둬서(새로고침 등으로 곧 같은 token으로 재접속하는 경우) 방에 남아있게 한다.
+const RECONNECT_GRACE_MS = 8000;
+const pendingLeaves = new Map();
+
+function scheduleLeave(code, token) {
+  const key = `${code}:${token}`;
+  clearTimeout(pendingLeaves.get(key));
+  const timeoutId = setTimeout(() => {
+    pendingLeaves.delete(key);
+    try {
+      const result = rooms.leaveRoom(code, token);
+      afterLeave(code, token, result);
+    } catch {
+      // 이미 REST /leave 등으로 정리됐거나 방이 사라짐 - 무시
+    }
+  }, RECONNECT_GRACE_MS);
+  pendingLeaves.set(key, timeoutId);
+}
+
+function cancelScheduledLeave(code, token) {
+  const key = `${code}:${token}`;
+  const timeoutId = pendingLeaves.get(key);
+  if (timeoutId === undefined) return;
+  clearTimeout(timeoutId);
+  pendingLeaves.delete(key);
+}
+
 function broadcastRoomState(code) {
   const sockets = roomSockets.get(code);
   if (!sockets) return;
@@ -29,6 +57,34 @@ function broadcastRoomState(code) {
     } catch {
       // 이미 방을 나간 토큰 - 조용히 무시 (close 핸들러가 곧 정리함)
     }
+  }
+}
+
+function broadcastCoopCellUpdate(code, update) {
+  const sockets = roomSockets.get(code);
+  if (!sockets) return;
+  const payload = JSON.stringify({ type: 'coopCellUpdate', ...update });
+  for (const ws of sockets) {
+    if (ws.readyState === ws.OPEN) ws.send(payload);
+  }
+}
+
+function broadcastCoopCursor(code, senderWs, cursor) {
+  const sockets = roomSockets.get(code);
+  if (!sockets) return;
+  const payload = JSON.stringify({ type: 'coopCursor', ...cursor });
+  for (const ws of sockets) {
+    if (ws === senderWs) continue;
+    if (ws.readyState === ws.OPEN) ws.send(payload);
+  }
+}
+
+function broadcastCoopRotate(code, result) {
+  const sockets = roomSockets.get(code);
+  if (!sockets) return;
+  const payload = JSON.stringify({ type: 'coopRotate', ...result });
+  for (const ws of sockets) {
+    if (ws.readyState === ws.OPEN) ws.send(payload);
   }
 }
 
@@ -44,6 +100,7 @@ function removeSocket(code, token) {
 }
 
 function afterLeave(code, token, result) {
+  cancelScheduledLeave(code, token);
   removeSocket(code, token);
   if (result.room) broadcastRoomState(code);
 }
@@ -65,17 +122,44 @@ wss.on('connection', (ws, req) => {
   ws.roomCode = code;
   if (!roomSockets.has(code)) roomSockets.set(code, new Set());
   roomSockets.get(code).add(ws);
+  cancelScheduledLeave(code, token); // 유예 시간 안에 같은 토큰으로 재접속 - 나가기 취소
 
   ws.send(JSON.stringify({ type: 'roomState', room: state }));
 
-  ws.on('close', () => {
+  ws.on('message', (raw) => {
+    let msg;
     try {
-      const result = rooms.leaveRoom(code, token);
-      afterLeave(code, token, result);
+      msg = JSON.parse(raw);
     } catch {
-      // REST /leave 등으로 이미 정리된 경우 - 소켓 세트에서만 마저 제거
-      removeSocket(code, token);
+      return;
     }
+    try {
+      if (msg.type === 'coopEdit') {
+        const result = rooms.applyCoopEdit(ws.roomCode, ws.playerToken, {
+          row: msg.row, col: msg.col, value: msg.value,
+        });
+        broadcastCoopCellUpdate(ws.roomCode, result);
+        if (result.solved) broadcastRoomState(ws.roomCode);
+      } else if (msg.type === 'coopCursor') {
+        const result = rooms.applyCoopCursor(ws.roomCode, ws.playerToken, {
+          row: msg.row, col: msg.col,
+        });
+        broadcastCoopCursor(ws.roomCode, ws, result);
+      } else if (msg.type === 'coopRotate') {
+        const result = rooms.applyCoopRotate(ws.roomCode, ws.playerToken, {
+          originRow: msg.originRow, originCol: msg.originCol, steps: msg.steps,
+        });
+        broadcastCoopRotate(ws.roomCode, result);
+        if (result.solved) broadcastRoomState(ws.roomCode);
+      }
+    } catch {
+      // 잘못된 메시지나 방 종료 직후의 레이스 - 조용히 무시
+    }
+  });
+
+  ws.on('close', () => {
+    removeSocket(code, token); // 끊긴 소켓 자체는 즉시 정리(빈 소켓에 못 보내도록)
+    scheduleLeave(code, token); // 방에서 실제로 나가는 건 유예 시간 뒤로 미룸(재접속 대비)
   });
 
   ws.on('error', () => {
@@ -178,6 +262,18 @@ app.post('/api/rooms/:code/forfeit', (req, res) => {
   try {
     const token = getToken(req);
     const state = rooms.forfeitRoom(req.params.code, token);
+    broadcastRoomState(req.params.code);
+    res.json(state);
+  } catch (err) {
+    handleRoomError(res, err);
+  }
+});
+
+app.post('/api/rooms/:code/coop-load', (req, res) => {
+  try {
+    const token = getToken(req);
+    const { cells } = req.body ?? {};
+    const state = rooms.applyCoopLoad(req.params.code, token, { cells });
     broadcastRoomState(req.params.code);
     res.json(state);
   } catch (err) {

@@ -24,6 +24,15 @@ export class BoardRenderer {
     this.onCellSelect = null;
     this.noteMode = false; // true면 숫자 입력이 실제 값이 아닌 메모(후보 숫자)로 기록됨
 
+    /**
+     * 설정돼 있으면(협동 모드) 값 입력이 로컬로 반영되는 대신 이 함수로만 위임되고,
+     * 실제 반영은 applyRemoteCellUpdate()를 통해 서버 확정 결과가 돌아온 뒤에만 일어난다.
+     */
+    this.remoteInputHandler = null;
+
+    /** remoteInputHandler와 같은 원리, 턴테이블 회전(structure, steps)용 */
+    this.remoteRotateHandler = null;
+
     /** 실행 취소 스택 — 각 항목은 [{row, col, prevValue, prevCandidates}, ...] */
     this._undoStack = [];
 
@@ -56,6 +65,8 @@ export class BoardRenderer {
 
     while (this.svg.firstChild) this.svg.removeChild(this.svg.firstChild);
     this._els.clear();
+    this._filledBy = new Map();     // "r,c" → 채운 사람 색(협동 모드 전용)
+    this._remoteCursors = new Map(); // playerId → {rect}(협동 모드 전용)
 
     this._gConflicts    = this._g('g-conflicts');
     this._gSnakeOutline = null; // _updateSnakePaths()에서 처음 그릴 때 새로 생성됨
@@ -78,6 +89,11 @@ export class BoardRenderer {
 
     Validator.validate(this.board);
     this._updateAll();
+
+    // 원격 커서 레이어 — 항상 맨 위(가장 나중에 append)에 그려지도록 마지막에 추가
+    this._gRemoteCursors = this._g('g-remote-cursors');
+    this._gRemoteCursors.setAttribute('pointer-events', 'none');
+    this.svg.appendChild(this._gRemoteCursors);
   }
 
   // ── 셀 배경 + 텍스트 ──
@@ -140,7 +156,15 @@ export class BoardRenderer {
       conflictRect.setAttribute('display', 'none');
       this._gConflicts.appendChild(conflictRect);
 
-      this._els.set(`${cell.row},${cell.col}`, { rect, text, conflictRect, notesGroup, noteTexts });
+      // "채운 사람" 마커 (협동 모드 전용) — 값이 있을 때만 보이는 우하단 삼각형, 색은 채운 플레이어 색
+      const filledByMarker = this._el('polygon');
+      const m = 11;
+      filledByMarker.setAttribute('points', `${x + CELL},${y + CELL} ${x + CELL - m},${y + CELL} ${x + CELL},${y + CELL - m}`);
+      filledByMarker.setAttribute('pointer-events', 'none');
+      filledByMarker.setAttribute('display', 'none');
+      gFg.appendChild(filledByMarker);
+
+      this._els.set(`${cell.row},${cell.col}`, { rect, text, conflictRect, notesGroup, noteTexts, filledByMarker });
     }
     this.svg.appendChild(gBg);
     this._gCellsFg = gFg; // 턴테이블 십자 레이어를 그린 다음 render()에서 appendChild 됨
@@ -423,30 +447,52 @@ export class BoardRenderer {
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
 
-      // 임시 상단 레이어에서 원래 칸 레이어로 되돌린다 (제자리로 돌아오므로 순서는 무관).
       const gCells = this.svg.querySelector('#g-cells');
-      for (const { el } of cellEls) {
-        el.text.removeAttribute('transform');
-        el.notesGroup.removeAttribute('transform');
-        if (gCells) {
-          gCells.appendChild(el.text);
-          gCells.appendChild(el.notesGroup);
-        }
-      }
-      dragLayer.remove();
-
       const steps = Math.round(deltaDeg / 90);
-      if (steps !== 0) {
-        const changes = structure.rotate(this.board, steps);
-        this._pushUndo(changes);
-        Validator.validate(this.board);
-        this._updateAll();
-        if (this.onCellSelect && this.selectedCell) this.onCellSelect(this.selectedCell.row, this.selectedCell.col);
-        if (this.board.isSolved()) {
-          setTimeout(() => {
-            this._celebrate();
-            document.dispatchEvent(new CustomEvent('sudoku:solved'));
-          }, 80);
+
+      if (steps !== 0 && this.remoteRotateHandler) {
+        // 협동 모드 - 서버 확정(coopRotate push)이 올 때까지는 실제 값을 반영하지 않지만,
+        // 미리보기를 원래 모습으로 되돌리는 대신 "목표 각도(90°*steps)"로 스냅해서 그대로 둔다.
+        // 되돌렸다가 확정 응답이 온 뒤 다시 돌아가는 것처럼 보이면 회전이 안 먹은 것처럼 느껴지기 때문 -
+        // 목표 각도로 스냅한 모습은 실제 회전 결과와 화면상 동일하므로 깜빡임 없이 자연스럽다.
+        // applyRemoteCellUpdate/applyRemoteRotate가 확정 값을 반영할 때 이 transform을 지운다.
+        const rad = steps * 90 * Math.PI / 180;
+        const cos = Math.cos(rad), sin = Math.sin(rad);
+        for (const { el, cx, cy } of cellEls) {
+          const dx = cx - centerX, dy = cy - centerY;
+          const nx = centerX + (dx * cos - dy * sin);
+          const ny = centerY + (dx * sin + dy * cos);
+          const t = `translate(${nx - cx}, ${ny - cy})`;
+          el.text.setAttribute('transform', t);
+          el.notesGroup.setAttribute('transform', t);
+          if (gCells) { gCells.appendChild(el.text); gCells.appendChild(el.notesGroup); }
+        }
+        dragLayer.remove();
+        this.remoteRotateHandler(structure, steps);
+      } else {
+        // 임시 상단 레이어에서 원래 칸 레이어로 되돌린다 (제자리로 돌아오므로 순서는 무관).
+        for (const { el } of cellEls) {
+          el.text.removeAttribute('transform');
+          el.notesGroup.removeAttribute('transform');
+          if (gCells) {
+            gCells.appendChild(el.text);
+            gCells.appendChild(el.notesGroup);
+          }
+        }
+        dragLayer.remove();
+
+        if (steps !== 0) {
+          const changes = structure.rotate(this.board, steps);
+          this._pushUndo(changes);
+          Validator.validate(this.board);
+          this._updateAll();
+          if (this.onCellSelect && this.selectedCell) this.onCellSelect(this.selectedCell.row, this.selectedCell.col);
+          if (this.board.isSolved()) {
+            setTimeout(() => {
+              this._celebrate();
+              document.dispatchEvent(new CustomEvent('sudoku:solved'));
+            }, 80);
+          }
         }
       }
 
@@ -608,8 +654,16 @@ export class BoardRenderer {
     const el   = this._els.get(`${row},${col}`);
     const cell = this.board.getCell(row, col);
     if (!el || !cell) return;
-    const { rect, text, conflictRect, noteTexts } = el;
+    const { rect, text, conflictRect, noteTexts, filledByMarker } = el;
     const sel = this.selectedCell?.row === row && this.selectedCell?.col === col;
+
+    const fillerColor = this._filledBy.get(`${row},${col}`);
+    if (fillerColor && cell.value !== null) {
+      filledByMarker.setAttribute('fill', fillerColor);
+      filledByMarker.setAttribute('display', 'block');
+    } else {
+      filledByMarker.setAttribute('display', 'none');
+    }
 
     rect.setAttribute('fill',
       sel               ? 'var(--cell-selected)'    :
@@ -711,9 +765,13 @@ export class BoardRenderer {
 
     // ── 지우기: 모드 상관없이 값 + 메모 모두 제거 ──
     if (value === null) {
+      if (cell.value === null && cell.candidates.size === 0) return; // 지울 게 없으면 변화 없음
+      if (this.remoteInputHandler) {
+        this.remoteInputHandler(row, col, null);
+        return;
+      }
       const prevValue = cell.value;
       const prevCandidates = [...cell.candidates];
-      if (prevValue === null && prevCandidates.length === 0) return; // 지울 게 없으면 변화 없음
       cell.value = null;
       cell.candidates.clear();
       this._pushUndo([{ row, col, prevValue, prevCandidates }]);
@@ -741,6 +799,11 @@ export class BoardRenderer {
       return;
     }
 
+    if (this.remoteInputHandler) {
+      this.remoteInputHandler(row, col, value);
+      return;
+    }
+
     const prevValue = cell.value;
     const prevCandidates = [...cell.candidates];
     this.board.setValue(row, col, value);
@@ -754,6 +817,168 @@ export class BoardRenderer {
         this._celebrate();
         document.dispatchEvent(new CustomEvent('sudoku:solved'));
       }, 80);
+    }
+  }
+
+  /**
+   * 협동 모드 — 서버가 확정한 셀 값 하나를 반영한다(내 입력의 확정 echo든, 다른
+   * 플레이어의 입력이든 동일한 경로). undo 스택에는 쌓지 않고(원격 상태는 로컬
+   * undo로 되돌릴 수 없어야 함), 현재 선택은 그대로 둔 채 하이라이트만 재계산한다.
+   */
+  applyRemoteCellUpdate({ row, col, value, color }) {
+    const cell = this.board.getCell(row, col);
+    if (!cell || cell.isGiven) return;
+
+    cell.value = value;
+    cell.candidates.clear();
+    const key = `${row},${col}`;
+    if (color) this._filledBy.set(key, color);
+    else this._filledBy.delete(key);
+
+    Validator.validate(this.board);
+    if (this.selectedCell) this.selectCell(this.selectedCell.row, this.selectedCell.col);
+    else this._updateAll();
+
+    if (this.board.isSolved()) {
+      setTimeout(() => {
+        this._celebrate();
+        document.dispatchEvent(new CustomEvent('sudoku:solved'));
+      }, 80);
+    }
+  }
+
+  /**
+   * 협동 모드 — 서버가 확정한 턴테이블 회전 결과(영역 내 모든 칸의 값/given 여부/채운사람)를
+   * 한 번에 반영한다. 회전은 given 여부 자체도 옮기므로 applyRemoteCellUpdate와 달리 isGiven도
+   * 함께 덮어쓴다. 메모는 협동에서 로컬 전용 스코프라 회전 후 위치가 어긋나므로 비운다.
+   */
+  applyRemoteRotate({ cells }) {
+    for (const { row, col, value, isGiven, color } of cells) {
+      const cell = this.board.getCell(row, col);
+      if (!cell) continue;
+      cell.value = value;
+      cell.isGiven = isGiven;
+      cell.candidates.clear();
+      const key = `${row},${col}`;
+      if (color) this._filledBy.set(key, color);
+      else this._filledBy.delete(key);
+
+      // 내가 드래그를 한 경우, 목표 각도로 스냅해둔 미리보기 transform이 아직 남아있을 수 있다 -
+      // 이제 실제 값을 확정 반영하므로 지운다(안 지우면 이중으로 밀려 보임). 남이 돌린 경우엔 애초에 없어 무해한 no-op.
+      const el = this._els.get(key);
+      if (el) {
+        el.text.removeAttribute('transform');
+        el.notesGroup.removeAttribute('transform');
+      }
+    }
+
+    Validator.validate(this.board);
+    if (this.selectedCell) this.selectCell(this.selectedCell.row, this.selectedCell.col);
+    else this._updateAll();
+
+    if (this.board.isSolved()) {
+      setTimeout(() => {
+        this._celebrate();
+        document.dispatchEvent(new CustomEvent('sudoku:solved'));
+      }, 80);
+    }
+  }
+
+  /**
+   * 협동 모드 진입/재접속 시, 그리고 진행 중 서버 스냅샷이 다시 올 때마다(참가자 목록 변경 등
+   * 값과 무관한 push 포함) 호출된다. 값이 실제로 안 바뀐 칸은 아예 건드리지 않는데, 그렇지
+   * 않으면 매번 로컬 메모(협동에서 로컬 전용)까지 지워버려서 관계없는 push에도 다같이 채워둔
+   * 메모가 날아가는 문제가 생긴다.
+   */
+  loadCoopCells(cells) {
+    for (const { row, col, value, color } of cells) {
+      const cell = this.board.getCell(row, col);
+      if (!cell || cell.isGiven || cell.value === value) continue;
+      cell.value = value;
+      cell.candidates.clear();
+      const key = `${row},${col}`;
+      if (color) this._filledBy.set(key, color);
+      else this._filledBy.delete(key);
+    }
+    Validator.validate(this.board);
+    if (this.selectedCell) this.selectCell(this.selectedCell.row, this.selectedCell.col);
+    else this._updateAll();
+  }
+
+  /** 협동 모드 — 다른 플레이어의 선택 칸 위치를 색깔 테두리 + 그 아래 닉네임 태그로 표시/이동 */
+  upsertRemoteCursor(playerId, row, col, color, label) {
+    let entry = this._remoteCursors.get(playerId);
+    if (!entry) {
+      const rect = this._el('rect');
+      rect.setAttribute('width', CELL - 4);
+      rect.setAttribute('height', CELL - 4);
+      rect.setAttribute('rx', '4');
+      rect.setAttribute('fill', 'none');
+      rect.setAttribute('stroke-width', '3');
+      this._gRemoteCursors.appendChild(rect);
+
+      // 닉네임 태그: 밑에 깔리는 배경 알약 모양 + 그 위 흰 글씨 (아래에 뭐가 있어도 읽히도록)
+      const labelBg = this._el('rect');
+      labelBg.setAttribute('rx', '3');
+      labelBg.setAttribute('pointer-events', 'none');
+      this._gRemoteCursors.appendChild(labelBg);
+
+      const labelText = this._el('text');
+      labelText.setAttribute('text-anchor', 'middle');
+      labelText.setAttribute('dominant-baseline', 'central');
+      labelText.setAttribute('font-size', '11');
+      labelText.setAttribute('font-family', "'Inter', sans-serif");
+      labelText.setAttribute('font-weight', '600');
+      labelText.setAttribute('fill', '#ffffff');
+      labelText.setAttribute('pointer-events', 'none');
+      this._gRemoteCursors.appendChild(labelText);
+
+      entry = { rect, labelBg, labelText };
+      this._remoteCursors.set(playerId, entry);
+    }
+
+    const x = this._px(col), y = this._py(row);
+    entry.rect.setAttribute('x', x + 2);
+    entry.rect.setAttribute('y', y + 2);
+    entry.rect.setAttribute('stroke', color);
+
+    entry.labelText.textContent = label ?? '';
+    const cx = x + CELL / 2;
+    const labelY = y + CELL + 14;
+    entry.labelText.setAttribute('x', cx);
+    entry.labelText.setAttribute('y', labelY);
+
+    const textW = entry.labelText.getBBox().width;
+    const padX = 6, h = 16;
+    entry.labelBg.setAttribute('x', cx - textW / 2 - padX);
+    entry.labelBg.setAttribute('y', labelY - h / 2);
+    entry.labelBg.setAttribute('width', textW + padX * 2);
+    entry.labelBg.setAttribute('height', h);
+    entry.labelBg.setAttribute('fill', color);
+  }
+
+  /** 협동 모드 — 플레이어가 나가거나 세션이 끝났을 때 커서 표시 제거 */
+  removeRemoteCursor(playerId) {
+    const entry = this._remoteCursors.get(playerId);
+    if (!entry) return;
+    entry.rect.remove();
+    entry.labelBg.remove();
+    entry.labelText.remove();
+    this._remoteCursors.delete(playerId);
+  }
+
+  /** 협동 모드 종료 시 남은 원격 커서를 전부 지운다 */
+  clearRemoteCursors() {
+    for (const { rect, labelBg, labelText } of this._remoteCursors.values()) {
+      rect.remove(); labelBg.remove(); labelText.remove();
+    }
+    this._remoteCursors.clear();
+  }
+
+  /** keepIds에 없는 playerId의 원격 커서를 지운다 (플레이어가 방을 나갔을 때 정리용) */
+  pruneRemoteCursors(keepIds) {
+    for (const playerId of [...this._remoteCursors.keys()]) {
+      if (!keepIds.has(playerId)) this.removeRemoteCursor(playerId);
     }
   }
 

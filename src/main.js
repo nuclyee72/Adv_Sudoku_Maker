@@ -10,6 +10,7 @@ import { templates as GENERATE_TEMPLATES } from './generator/templates/index.js'
 import { generatePuzzle } from './generator/generatePuzzle.js';
 import * as roomClient from './net/roomClient.js';
 import { reviveStructures } from './puzzles/reviveStructures.js';
+import { colorForIndex } from './net/playerColors.js';
 
 const svg          = document.getElementById('sudoku-svg');
 const boardPanel   = document.getElementById('board-panel');
@@ -98,6 +99,18 @@ const battleEndedOverlay    = document.getElementById('battle-ended-overlay');
 const battleEndedList       = document.getElementById('battle-ended-list');
 const btnBattleEndedLeave   = document.getElementById('btn-battle-ended-leave');
 
+const coopLeaderboard     = document.getElementById('coop-leaderboard');
+const coopLeaderboardList = document.getElementById('coop-leaderboard-list');
+const coopEndedOverlay = document.getElementById('coop-ended-overlay');
+const coopEndedList    = document.getElementById('coop-ended-list');
+const coopEndedTime    = document.getElementById('coop-ended-time');
+const btnCoopEndedLeave = document.getElementById('btn-coop-ended-leave');
+
+// renderer.onCellSelect(아래)가 참조하므로, renderer.selectFirstCell()이 모듈 초기화 중
+// 동기적으로 처음 호출되기 전에 반드시 선언돼 있어야 한다(TDZ 방지).
+let mp = null;          // { code, token, isHost, socket } - 멀티플레이 세션 상태
+let coopActive = false; // 지금 협동 게임 화면에 들어와 있는지
+
 // ── 보드 조립 ──
 const initialPuzzle = PUZZLES.find((p) => p.id === 'test_overlap4') || PUZZLES[0];
 let activePuzzleId = initialPuzzle.id;
@@ -165,6 +178,7 @@ const keypad = new Keypad(
 renderer.onCellSelect = (row, col) => {
   const cell = board.getCell(row, col);
   keypad.highlightValue(cell?.value ?? null);
+  if (coopActive && mp?.socket) roomClient.sendCoopCursor(mp.socket, { row, col });
 };
 
 renderer.selectFirstCell();
@@ -275,13 +289,27 @@ document.querySelectorAll('.load-btn').forEach((btn) => {
   btn.addEventListener('click', () => {
     const raw = localStorage.getItem(slotKey(btn.dataset.slot));
     if (!raw) return;
-    askConfirm(`슬롯 ${btn.dataset.slot}을 불러올까요?<br/>현재 진행 상황은 사라집니다.`, () => {
+    const message = coopActive
+      ? `슬롯 ${btn.dataset.slot}을 불러올까요?<br/>모든 참가자의 보드가 함께 바뀝니다.`
+      : `슬롯 ${btn.dataset.slot}을 불러올까요?<br/>현재 진행 상황은 사라집니다.`;
+    askConfirm(message, async () => {
       try {
-        board.loadSerialized(JSON.parse(raw));
-        renderer.refresh();
+        const data = JSON.parse(raw);
+        if (coopActive) {
+          if (!mp) return;
+          // 로컬로 바로 반영하지 않고 서버에 보내 검증/반영시킨 뒤, 그 결과가 roomState push로
+          // 돌아오면 그때 화면에 반영된다(다른 값 입력/회전과 동일한 "서버 확정 후 반영" 원칙).
+          await roomClient.coopLoad(mp.code, mp.token, {
+            cells: data.map((c) => ({ row: c.row, col: c.col, value: c.value })),
+          });
+        } else {
+          board.loadSerialized(data);
+          renderer.refresh();
+        }
         closePanel(savePanel);
-      } catch {
-        // 저장된 데이터가 손상된 경우 조용히 무시
+      } catch (err) {
+        console.error(err);
+        // 저장된 데이터가 손상됐거나 서버 요청 실패 - 조용히 무시
       }
     });
   });
@@ -406,7 +434,8 @@ function enterLandingAt(subview) {
 
 function enterLanding() {
   exitBattleUI();
-  if (mp) leaveCurrentRoom(); // 대기실/배틀에 있던 상태로 메인 화면으로 돌아가면 방도 함께 나감
+  exitCoopUI();
+  if (mp) leaveCurrentRoom(); // 대기실/배틀/협동에 있던 상태로 메인 화면으로 돌아가면 방도 함께 나감
   enterLandingAt(landingMain);
 }
 
@@ -431,6 +460,15 @@ btnGoLanding.addEventListener('click', () => {
       // 방은 그대로 유지(소켓도 유지) - 다른 참가자의 리더보드/종료 결과에 "항복"으로 계속 보이도록.
       // 게임이 끝나면 handleRoomPush가 조용히 정리한다.
       exitBattleUI();
+      enterLandingAt(landingMulti);
+    });
+    return;
+  }
+  if (coopActive) {
+    // 협동은 개인 순위/항복 개념이 없어 그냥 나가기 확인만 하면 됨
+    askConfirm('메인 화면으로 돌아갈까요?', async () => {
+      exitCoopUI();
+      await leaveCurrentRoom();
       enterLandingAt(landingMulti);
     });
     return;
@@ -479,19 +517,70 @@ let lcMode = 'battle';
 lcModeBattle.addEventListener('click', () => { lcMode = 'battle'; setModeToggle(lcModeBattle, lcModeCoop, lcMode); });
 lcModeCoop.addEventListener('click', () => { lcMode = 'coop'; setModeToggle(lcModeBattle, lcModeCoop, lcMode); });
 
-let mp = null;             // { code, token, isHost, socket }
+// mp는 파일 상단에서 이미 선언됨(renderer.onCellSelect의 TDZ 문제 방지)
 let lastRoomState = null;  // 마지막으로 받은 roomState push (닉네임 편집 취소/설정 실패 시 복원용)
 let leavingIntentionally = false;
+
+/**
+ * 새로고침해도 방에서 튕겨나가지 않도록 code/token을 세션에 저장해둔다(탭을 닫으면 사라짐 -
+ * 영구 저장은 아님). WS 연결은 이 token만으로 재개되고, 서버가 roomState(협동이면
+ * coopCells 스냅샷 포함)를 다시 push해주므로 진행 상황이 그대로 복원된다.
+ */
+const ROOM_SESSION_KEY = 'sudoku-room-session';
+function saveRoomSession(code, token) {
+  try { sessionStorage.setItem(ROOM_SESSION_KEY, JSON.stringify({ code, token })); } catch { /* 무시 */ }
+}
+function loadRoomSession() {
+  try { return JSON.parse(sessionStorage.getItem(ROOM_SESSION_KEY)); } catch { return null; }
+}
+function clearRoomSession() {
+  try { sessionStorage.removeItem(ROOM_SESSION_KEY); } catch { /* 무시 */ }
+}
+
+/** room.players(colorIndex 포함)에서 playerId로 색을 조회 — 못 찾으면(이미 나간 참가자 등) 무채색 폴백 */
+function colorForPlayerId(playerId) {
+  const p = lastRoomState?.players.find((p) => p.id === playerId);
+  return p ? colorForIndex(p.colorIndex) : '#a0aec0';
+}
+
+function nicknameForPlayerId(playerId) {
+  return lastRoomState?.players.find((p) => p.id === playerId)?.nickname ?? '';
+}
 
 function connectRoomSocket(code, token) {
   return roomClient.connectSocket(code, token, {
     onState: handleRoomPush,
     onClose: () => {
       if (leavingIntentionally) { leavingIntentionally = false; return; }
-      // 서버 재시작 등 예기치 않은 연결 끊김 - 조용히 방 목록 화면으로 복귀
+      // 서버 재시작이나 유효하지 않은 세션(방이 이미 사라짐 등) - 조용히 방 목록 화면으로 복귀
       mp = null;
       lastRoomState = null;
+      clearRoomSession();
       enterLandingAt(landingMulti);
+    },
+    onCoopCellUpdate: (msg) => {
+      if (!coopActive) return;
+      renderer.applyRemoteCellUpdate({
+        row: msg.row, col: msg.col, value: msg.value,
+        color: msg.filledBy ? colorForPlayerId(msg.filledBy) : null,
+      });
+      setCoopCellOwner(msg.row, msg.col, msg.filledBy);
+      renderCoopLeaderboard();
+    },
+    onCoopCursor: (msg) => {
+      if (!coopActive) return;
+      renderer.upsertRemoteCursor(msg.playerId, msg.row, msg.col, colorForPlayerId(msg.playerId), nicknameForPlayerId(msg.playerId));
+    },
+    onCoopRotate: (msg) => {
+      if (!coopActive) return;
+      renderer.applyRemoteRotate({
+        cells: msg.cells.map((c) => ({
+          row: c.row, col: c.col, value: c.value, isGiven: c.isGiven,
+          color: c.filledBy ? colorForPlayerId(c.filledBy) : null,
+        })),
+      });
+      for (const c of msg.cells) setCoopCellOwner(c.row, c.col, c.filledBy);
+      renderCoopLeaderboard();
     },
   });
 }
@@ -504,15 +593,28 @@ async function leaveCurrentRoom() {
   if (socket && socket.readyState === WebSocket.OPEN) socket.close();
   mp = null;
   lastRoomState = null;
+  clearRoomSession();
 }
 
 function enterRoom({ token, isHost, room }) {
   if (mp?.socket) mp.socket.close(); // 이전에 항복하고 남아있던 소켓이 있다면 정리
   mp = { code: room.code, token, isHost, socket: null };
   mp.socket = connectRoomSocket(room.code, token);
+  saveRoomSession(room.code, token);
   enterWaitingRoom();
   renderWaitingRoom(room); // 최초 push 도착 전 화면 깜빡임 방지용 즉시 렌더
 }
+
+/** 페이지 새로고침 등으로 모듈이 다시 로드됐을 때, 저장된 세션이 있으면 조용히 재접속을 시도한다 */
+function tryResumeRoomSession() {
+  const saved = loadRoomSession();
+  if (!saved?.code || !saved?.token) return;
+  mp = { code: saved.code, token: saved.token, isHost: false, socket: null };
+  mp.socket = connectRoomSocket(saved.code, saved.token);
+  // 첫 roomState push가 도착하면 handleRoomPush가 대기실/배틀/협동 중 맞는 화면으로 알아서 보내준다.
+  // 세션이 더는 유효하지 않으면(방 소멸 등) 위 onClose 핸들러가 랜딩으로 되돌리고 세션을 정리한다.
+}
+tryResumeRoomSession();
 
 btnLcSubmit.addEventListener('click', async () => {
   showFormError(lcError, '');
@@ -611,17 +713,14 @@ btnWrStart.addEventListener('click', async () => {
   showFormError(wrError, '');
   btnWrStart.disabled = true;
   try {
-    if (lastRoomState.mode === 'battle') {
-      btnWrStart.textContent = '생성 중...';
-      const template = GENERATE_TEMPLATES.find((t) => t.id === lastRoomState.templateId);
-      if (!template) throw new Error('선택된 템플릿을 찾을 수 없어요.');
-      const puzzle = await generatePuzzle(template);
-      await roomClient.startRoom(mp.code, mp.token, {
-        puzzle: { structures: puzzle.structures, givens: puzzle.givens },
-      });
-    } else {
-      await roomClient.startRoom(mp.code, mp.token);
-    }
+    // 배틀/협동 둘 다 시작 시 퍼즐이 필요함 - 방장 브라우저에서 생성해 업로드
+    btnWrStart.textContent = '생성 중...';
+    const template = GENERATE_TEMPLATES.find((t) => t.id === lastRoomState.templateId);
+    if (!template) throw new Error('선택된 템플릿을 찾을 수 없어요.');
+    const puzzle = await generatePuzzle(template);
+    await roomClient.startRoom(mp.code, mp.token, {
+      puzzle: { structures: puzzle.structures, givens: puzzle.givens },
+    });
   } catch (err) {
     showFormError(wrError, err.message);
   } finally {
@@ -742,8 +841,10 @@ function handleRoomPush(room) {
     lastRoomState = room;
     if (battleActive) {
       showBattleEndedOverlay(room);
+    } else if (coopActive) {
+      showCoopEndedOverlay(room);
     } else {
-      // 항복 등으로 이미 배틀 화면을 벗어난 상태(랜딩에 있음) - 볼 화면이 없으므로 방 연결만 조용히 정리
+      // 항복 등으로 이미 게임 화면을 벗어난 상태(랜딩에 있음) - 볼 화면이 없으므로 방 연결만 조용히 정리
       leaveCurrentRoom();
     }
     return;
@@ -755,19 +856,46 @@ function handleRoomPush(room) {
     return; // 이미 배틀 중이면 rAF 루프가 lastRoomState를 계속 읽어 그리므로 별도 렌더 불필요
   }
 
+  if (room.mode === 'coop' && room.status === 'playing') {
+    lastRoomState = room;
+    if (!coopActive) {
+      enterCoopGame(room);
+    } else {
+      // 이미 진행 중이면 칸 값/회전은 보통 coopCellUpdate/coopRotate push로 각각 반영되지만,
+      // 이 roomState push의 coopCells은 항상 서버의 "지금 이 순간" 전체 스냅샷이므로 그대로
+      // 다시 적용해도 안전(멱등)하다 - 불러오기(coop-load)처럼 칸을 한꺼번에 바꾸는 액션은
+      // 별도 메시지 타입 없이 이 경로로만 전파되므로 반드시 필요하다.
+      if (room.coopCells) {
+        renderer.loadCoopCells(room.coopCells.map((c) => ({
+          row: c.row, col: c.col, value: c.value,
+          color: c.filledBy ? colorForPlayerId(c.filledBy) : null,
+        })));
+        resetCoopFillCounts(room.coopCells);
+      }
+      // 방을 나간 참가자의 원격 커서 정리 + 참가자 목록이 바뀌었을 수 있으니 현황판도 새로 그린다
+      renderer.pruneRemoteCursors(new Set(room.players.map((p) => p.id)));
+      renderCoopLeaderboard();
+    }
+    return;
+  }
+
   renderWaitingRoom(room);
 }
 
-function setBattleControlsDisabled(disabled) {
-  btnOpenPuzzle.disabled = disabled;
-  btnOpenGenerate.disabled = disabled;
-  btnOpenSave.disabled = disabled;
-  timerToggleBtn.disabled = disabled;
+/**
+ * 퍼즐 선택/자동 생성/타이머는 멀티플레이 진행 중엔 의미가 없으므로(퍼즐이 방 단위로 고정되고,
+ * 타이머는 배틀/협동 전용 표시로 대체됨) 아예 숨긴다. 저장/불러오기는 모드마다 의미가 달라서
+ * (배틀: 개인전이라 막음 / 협동: 다같이 쓰는 보드라 허용) 호출하는 쪽에서 따로 처리한다.
+ */
+function setMultiplayerControlsDisabled(disabled) {
+  btnOpenPuzzle.classList.toggle('hidden', disabled);
+  btnOpenGenerate.classList.toggle('hidden', disabled);
+  timerToggleBtn.classList.toggle('hidden', disabled);
 }
 
 /** 배틀 시작 카운트다운 — 서버가 정한 미래 시각(playingStartedAt)까지 전원 동시에 센다 */
-function startBattleCountdown(playingStartedAt) {
-  stopBattleCountdown();
+function startSyncedCountdown(playingStartedAt) {
+  stopSyncedCountdown();
   const remaining = playingStartedAt - Date.now();
   if (remaining <= 0) return; // 이미 시작 시각이 지남(늦게 입장 등) - 카운트다운 없이 바로 시작
 
@@ -777,14 +905,14 @@ function startBattleCountdown(playingStartedAt) {
 
   function frame() {
     const left = playingStartedAt - Date.now();
-    if (left <= 0) { stopBattleCountdown(); return; }
+    if (left <= 0) { stopSyncedCountdown(); return; }
     battleCountdownNumber.textContent = String(Math.ceil(left / 1000));
     battleCountdownRAF = requestAnimationFrame(frame);
   }
   frame();
 }
 
-function stopBattleCountdown() {
+function stopSyncedCountdown() {
   if (battleCountdownRAF !== null) { cancelAnimationFrame(battleCountdownRAF); battleCountdownRAF = null; }
   boardLocked = false;
   boardWrapper.classList.remove('blurred');
@@ -796,10 +924,11 @@ function exitBattleUI() {
   battleActive = false;
   battleFinishedLocally = false;
   stopBattleLeaderboardLoop();
-  stopBattleCountdown();
+  stopSyncedCountdown();
   battleLeaderboard.classList.add('hidden');
   closePanel(battleEndedOverlay);
-  setBattleControlsDisabled(false);
+  setMultiplayerControlsDisabled(false);
+  btnOpenSave.disabled = false;
 }
 
 function enterBattleGame(room) {
@@ -812,7 +941,8 @@ function enterBattleGame(room) {
   timerDisplay.classList.remove('show');
   disarmTimer();
 
-  setBattleControlsDisabled(true);
+  setMultiplayerControlsDisabled(true);
+  btnOpenSave.disabled = true; // 배틀은 각자 독립된 개인전이라 저장/불러오기를 막아둔다
   enterGame();
 
   battleActive = true;
@@ -820,7 +950,7 @@ function enterBattleGame(room) {
   battleLeaderboard.classList.remove('hidden');
   renderBattleLeaderboard(room);
   startBattleLeaderboardLoop();
-  startBattleCountdown(room.playingStartedAt); // 이미 시작 시각이 지났으면 내부에서 알아서 스킵
+  startSyncedCountdown(room.playingStartedAt); // 이미 시작 시각이 지났으면 내부에서 알아서 스킵
 }
 
 function renderBattleLeaderboardInto(listEl, room, { showUnfinishedAsDNF = false } = {}) {
@@ -904,6 +1034,156 @@ document.addEventListener('sudoku:solved', () => {
   if (!battleActive || battleFinishedLocally || !mp) return;
   battleFinishedLocally = true;
   roomClient.finishRoom(mp.code, mp.token).catch((err) => console.error(err));
+});
+
+// ── 협동 모드 ──
+// coopActive는 파일 상단에서 이미 선언됨(renderer.onCellSelect의 TDZ 문제 방지)
+let coopRAF = null; // 공유(전원 동일) 경과시간 표시 루프
+let coopCellOwners = new Map(); // "r,c" -> 그 칸을 채운 playerId (진행 현황 집계용, 렌더러의 색상 Map과는 별개)
+let coopFillCounts = new Map(); // playerId -> 채운 칸 수
+
+/** cellOwners/fillCounts를 room.coopCells 스냅샷으로부터 처음부터 다시 계산 */
+function resetCoopFillCounts(coopCells) {
+  coopCellOwners = new Map();
+  coopFillCounts = new Map();
+  for (const c of coopCells ?? []) {
+    if (c.filledBy) setCoopCellOwner(c.row, c.col, c.filledBy);
+  }
+}
+
+/** 한 칸의 소유자가 바뀔 때(입력/지우기) 이전 소유자 카운트는 내리고 새 소유자는 올린다 */
+function setCoopCellOwner(row, col, playerId) {
+  const key = `${row},${col}`;
+  const prev = coopCellOwners.get(key);
+  if (prev) coopFillCounts.set(prev, Math.max(0, (coopFillCounts.get(prev) ?? 1) - 1));
+  if (playerId) {
+    coopCellOwners.set(key, playerId);
+    coopFillCounts.set(playerId, (coopFillCounts.get(playerId) ?? 0) + 1);
+  } else {
+    coopCellOwners.delete(key);
+  }
+}
+
+/** 오른쪽 위 협동 진행 현황 패널 — 배틀 리더보드와 같은 자리/모양, 순위 대신 참가자별 채운 칸 수 */
+function renderCoopLeaderboard() {
+  if (!lastRoomState) return;
+  coopLeaderboardList.innerHTML = '';
+  for (const p of lastRoomState.players) {
+    const row = document.createElement('div');
+    row.className = 'battle-leaderboard-row';
+
+    const name = document.createElement('span');
+    name.className = 'battle-nickname';
+    name.textContent = p.nickname;
+    row.appendChild(name);
+
+    const count = document.createElement('span');
+    count.className = 'coop-fill-count';
+    count.textContent = String(coopFillCounts.get(p.id) ?? 0);
+    row.appendChild(count);
+
+    coopLeaderboardList.appendChild(row);
+  }
+}
+
+/** 협동 화면에서 벗어날 때(나가기/게임 종료) 공통 정리 */
+function exitCoopUI() {
+  coopActive = false;
+  stopCoopTimerLoop();
+  stopSyncedCountdown();
+  renderer.remoteInputHandler = null;
+  renderer.remoteRotateHandler = null;
+  renderer.clearRemoteCursors();
+  timerDisplay.classList.remove('show');
+  coopLeaderboard.classList.add('hidden');
+  setMultiplayerControlsDisabled(false);
+  btnOpenSave.disabled = false;
+}
+
+function enterCoopGame(room) {
+  const structures = reviveStructures(room.puzzle.structures);
+  mountBoard(structures, room.puzzle.givens);
+
+  // 싱글플레이용 연습 타이머는 협동과 무관하므로 완전히 꺼두고, 공유 타이머만 표시
+  timerEnabled = false;
+  timerToggleBtn.classList.remove('active');
+  disarmTimer();
+
+  if (room.coopCells) {
+    renderer.loadCoopCells(room.coopCells.map((c) => ({
+      row: c.row, col: c.col, value: c.value,
+      color: c.filledBy ? colorForPlayerId(c.filledBy) : null,
+    })));
+  }
+  resetCoopFillCounts(room.coopCells);
+  // 값 입력/턴테이블 회전 모두 로컬로 바로 반영되지 않고 서버 확정(coopCellUpdate/coopRotate push) 후에만 반영된다
+  renderer.remoteInputHandler = (row, col, value) => {
+    if (mp?.socket) roomClient.sendCoopEdit(mp.socket, { row, col, value });
+  };
+  renderer.remoteRotateHandler = (structure, steps) => {
+    if (mp?.socket) {
+      roomClient.sendCoopRotate(mp.socket, { originRow: structure.originRow, originCol: structure.originCol, steps });
+    }
+  };
+
+  setMultiplayerControlsDisabled(true);
+  btnOpenSave.disabled = false; // 협동은 다같이 쓰는 보드라 저장/불러오기를 그대로 허용
+  enterGame();
+
+  coopActive = true;
+  timerDisplay.classList.add('show');
+  coopLeaderboard.classList.remove('hidden');
+  renderCoopLeaderboard();
+  startCoopTimerLoop();
+  startSyncedCountdown(room.playingStartedAt); // 이미 시작 시각이 지났으면 내부에서 알아서 스킵
+
+  // 다른 참가자가 내 초기 선택 칸을 바로 볼 수 있도록 최초 커서 위치도 한 번 보내둔다
+  if (renderer.selectedCell && mp?.socket) {
+    roomClient.sendCoopCursor(mp.socket, renderer.selectedCell);
+  }
+}
+
+function coopTimerFrame() {
+  if (!coopActive) return;
+  if (lastRoomState?.playingStartedAt) {
+    timerDisplay.textContent = formatTimer(Math.max(0, Date.now() - lastRoomState.playingStartedAt));
+  }
+  coopRAF = requestAnimationFrame(coopTimerFrame);
+}
+
+function startCoopTimerLoop() {
+  stopCoopTimerLoop();
+  coopRAF = requestAnimationFrame(coopTimerFrame);
+}
+
+function stopCoopTimerLoop() {
+  if (coopRAF !== null) { cancelAnimationFrame(coopRAF); coopRAF = null; }
+}
+
+function showCoopEndedOverlay(room) {
+  stopCoopTimerLoop();
+  coopActive = false;
+
+  coopEndedList.innerHTML = '';
+  for (const p of room.players) {
+    const row = document.createElement('div');
+    row.className = 'battle-leaderboard-row';
+    const name = document.createElement('span');
+    name.className = 'battle-nickname';
+    name.textContent = p.nickname;
+    row.appendChild(name);
+    coopEndedList.appendChild(row);
+  }
+  coopEndedTime.textContent = (room.endedAt && room.playingStartedAt)
+    ? formatTimer(room.endedAt - room.playingStartedAt)
+    : '';
+  openPanel(coopEndedOverlay);
+}
+
+btnCoopEndedLeave.addEventListener('click', async () => {
+  exitCoopUI();
+  await leaveCurrentRoom();
+  enterLandingAt(landingMulti);
 });
 
 // ── 타이머 ──
