@@ -38,6 +38,12 @@ const helpClose       = document.getElementById('help-close');
 const puzzleList      = document.getElementById('puzzle-list');
 const generateList    = document.getElementById('generate-list');
 
+const timerToggleBtn    = document.getElementById('btn-toggle-timer');
+const timerDisplay      = document.getElementById('timer-display');
+const boardWrapper      = document.querySelector('.board-wrapper');
+const boardStartOverlay = document.getElementById('board-start-overlay');
+const btnStartTimer     = document.getElementById('btn-start-timer');
+
 // ── 보드 조립 ──
 const initialPuzzle = PUZZLES.find((p) => p.id === 'test_overlap4') || PUZZLES[0];
 let activePuzzleId = initialPuzzle.id;
@@ -97,9 +103,9 @@ function toggleNoteMode() {
 // ── 키패드 ──
 const keypad = new Keypad(
   keypadGrid,
-  (value) => renderer.inputValue(value),
-  toggleNoteMode,
-  () => renderer.undo(),
+  (value) => { if (!boardLocked) renderer.inputValue(value); },
+  () => { if (!boardLocked) toggleNoteMode(); },
+  () => { if (!boardLocked) renderer.undo(); },
 );
 
 renderer.onCellSelect = (row, col) => {
@@ -166,6 +172,7 @@ confirmModal.addEventListener('click', (e) => {
 });
 
 btnResetAll.addEventListener('click', () => {
+  if (boardLocked) return;
   btnResetAll.classList.add('pressed');
   setTimeout(() => btnResetAll.classList.remove('pressed'), 130);
   askConfirm('입력한 숫자를 모두 지울까요?<br/>초기 제공 숫자는 유지됩니다.', () => renderer.resetBoard());
@@ -238,6 +245,7 @@ function loadPuzzle(puzzle) {
   clearAllSaveSlots();
   refreshSaveSlots(); // 세이브 패널이 이미 열려있어도 즉시 "비어있음"으로 반영
   closePanel(puzzlePanel);
+  if (timerEnabled) armTimer(); // 타이머 켜져있으면 새 퍼즐도 "시작" 누르기 전까지 잠금
 }
 
 function renderPuzzleList() {
@@ -309,6 +317,88 @@ function toggleGeneratePanel() {
 btnOpenGenerate.addEventListener('click', toggleGeneratePanel);
 generateClose.addEventListener('click', () => closePanel(generatePanel));
 
+// ── 타이머 ──
+let timerEnabled   = false;
+let timerRunning   = false;
+let boardLocked    = false; // 타이머가 켜져 있고 아직 "시작"을 누르기 전 (게임판 조작 차단)
+let timerElapsedMs = 0;
+let timerStartedAt = 0;
+let timerRAF       = null;
+
+function formatTimer(ms) {
+  const total = Math.max(0, Math.floor(ms));
+  const minutes = Math.floor(total / 60000);
+  const seconds = Math.floor((total % 60000) / 1000);
+  const hundredths = Math.floor((total % 1000) / 10);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${pad(minutes)}:${pad(seconds)}.${pad(hundredths)}`;
+}
+
+function renderTimerDisplay() {
+  const current = timerElapsedMs + (timerRunning ? performance.now() - timerStartedAt : 0);
+  timerDisplay.textContent = formatTimer(current);
+}
+
+function timerFrame() {
+  renderTimerDisplay();
+  if (timerRunning) timerRAF = requestAnimationFrame(timerFrame);
+}
+
+function stopTimerFrame() {
+  if (timerRAF !== null) {
+    cancelAnimationFrame(timerRAF);
+    timerRAF = null;
+  }
+}
+
+/** 타이머 켜짐 / 새 퍼즐 로드: "시작" 누르기 전 상태로 리셋하고 게임판을 블러+잠금 */
+function armTimer() {
+  timerRunning = false;
+  timerElapsedMs = 0;
+  stopTimerFrame();
+  renderTimerDisplay();
+  boardLocked = true;
+  boardWrapper.classList.add('blurred');
+  boardStartOverlay.classList.add('show');
+}
+
+/** 타이머 꺼짐: 블러/잠금 해제, 시간 리셋 */
+function disarmTimer() {
+  timerRunning = false;
+  timerElapsedMs = 0;
+  stopTimerFrame();
+  boardLocked = false;
+  boardWrapper.classList.remove('blurred');
+  boardStartOverlay.classList.remove('show');
+}
+
+timerToggleBtn.addEventListener('click', () => {
+  timerEnabled = !timerEnabled;
+  timerToggleBtn.classList.toggle('active', timerEnabled);
+  timerDisplay.classList.toggle('show', timerEnabled);
+  if (timerEnabled) armTimer();
+  else disarmTimer();
+});
+
+btnStartTimer.addEventListener('click', () => {
+  if (!timerEnabled || timerRunning) return;
+  boardLocked = false;
+  boardWrapper.classList.remove('blurred');
+  boardStartOverlay.classList.remove('show');
+  timerRunning = true;
+  timerStartedAt = performance.now();
+  timerFrame();
+});
+
+document.addEventListener('sudoku:solved', () => {
+  if (timerRunning) {
+    timerElapsedMs += performance.now() - timerStartedAt;
+    timerRunning = false;
+    stopTimerFrame();
+    renderTimerDisplay();
+  }
+});
+
 // ── 키보드 단축키 ──
 const ARROW_DIR = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
 
@@ -345,6 +435,9 @@ window.addEventListener('keydown', (e) => {
 
   // 5) 위 패널들이 열려있는 동안은 게임 조작 단축키 차단
   if (isFloatingPanelOpen()) return;
+
+  // 5-1) 타이머가 켜져 있고 아직 "시작"을 누르기 전이면 게임 조작 단축키 차단
+  if (boardLocked) return;
 
   if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z') {
     e.preventDefault();

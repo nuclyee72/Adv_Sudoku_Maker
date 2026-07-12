@@ -13,6 +13,9 @@
     <div class="board-wrapper">
       <svg id="sudoku-svg" xmlns="http://www.w3.org/2000/svg"></svg>
     </div>
+    <div id="board-start-overlay" class="board-start-overlay">
+      <button id="btn-start-timer" class="btn-start-timer" type="button">시작</button>
+    </div>
   </div>
 
   <!-- 숫자 입력 키패드 패널 -->
@@ -26,6 +29,7 @@
             <button id="btn-open-puzzle" class="kp-extra-btn" type="button">퍼즐 선택</button>
             <button id="btn-open-generate" class="kp-extra-btn" type="button">자동 생성</button>
             <button id="btn-open-save" class="kp-extra-btn" type="button">저장 / 불러오기</button>
+            <button id="btn-toggle-timer" class="kp-extra-btn" type="button">타이머</button>
           </div>
           <button id="btn-open-help" class="kp-extra-btn kp-extra-help" type="button">도움말</button>
         </div>
@@ -33,6 +37,7 @@
     </div>
     <div id="kp-panel-body" class="kp-panel-body">
       <div class="kp-body">
+        <div id="timer-display" class="timer-display">00:00.00</div>
         <div id="keypad-grid" class="kp-grid"></div>
         <div class="kp-sep"></div>
         <button id="btn-reset-all" class="kp-reset-all" type="button">모두 지우기</button>

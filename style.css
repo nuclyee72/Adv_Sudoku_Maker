@@ -43,6 +43,50 @@ html, body {
 .board-wrapper {
   display: inline-block;
   line-height: 0;
+  transition: filter 0.25s ease;
+}
+
+.board-wrapper.blurred {
+  filter: blur(10px);
+}
+
+/* ── 타이머 시작 전 게임 판 오버레이 ── */
+.board-start-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.board-start-overlay.show {
+  display: flex;
+  pointer-events: auto;
+}
+
+.btn-start-timer {
+  padding: 18px 52px;
+  border: none;
+  border-radius: 999px;
+  background: var(--text-input);
+  color: #ffffff;
+  font-family: 'Outfit', 'Inter', sans-serif;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  box-shadow: 0 16px 40px rgba(20, 24, 40, 0.28);
+  transition: transform 0.1s ease, background 0.15s ease;
+}
+
+.btn-start-timer:hover {
+  background: var(--text-sel);
+}
+
+.btn-start-timer:active {
+  transform: scale(0.96);
 }
 
 #sudoku-svg {
@@ -190,6 +234,11 @@ html, body {
   transform: scale(0.97);
 }
 
+.kp-extra-btn.active {
+  background: var(--cell-selected);
+  color: var(--text-sel);
+}
+
 .kp-panel-body {
   width: 232px;
   padding: 20px;
@@ -213,6 +262,25 @@ html, body {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 10px;
+}
+
+.timer-display {
+  display: none;
+  height: 40px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  background: #f0f1f4;
+  color: var(--text-given);
+  font-family: 'Outfit', 'Inter', sans-serif;
+  font-size: 21px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.5px;
+}
+
+.timer-display.show {
+  display: flex;
 }
 
 .kp-sep {
