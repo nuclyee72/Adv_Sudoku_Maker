@@ -2,8 +2,8 @@
  * overlapping.js — 겹침 스도쿠 (2판) 스테이지 데이터
  */
 export const overlapping = {
-  id: 'overlap-001',
-  name: '겹침 스도쿠 (2판)',
+  id: 'test_overlap2',
+  name: 'test_overlap2',
   boards: [
     { row: 0, col: 6 }, // 오른쪽 위 판
     { row: 6, col: 0 }, // 왼쪽 아래 판

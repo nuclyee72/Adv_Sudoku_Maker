@@ -4,8 +4,8 @@
  * 박스 경계를 넘는 인접 칸 사이에도 동일하게 적용된다.
  */
 export const consecutive = {
-  id: 'consecutive-001',
-  name: '연속 스도쿠 (인접)',
+  id: 'test_consecutive',
+  name: 'test_consecutive',
   boards: [{ row: 0, col: 0 }],
   grid: [
     [5,3,0,0,7,0,0,0,0],

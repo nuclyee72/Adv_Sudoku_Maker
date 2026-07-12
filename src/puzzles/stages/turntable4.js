@@ -4,8 +4,8 @@
  * 올바른 방향으로 맞춰야 나머지 스도쿠 규칙과 들어맞는다.
  */
 export const turntable4 = {
-  id: 'turntable4-001',
-  name: '턴테이블 스도쿠 (4x4)',
+  id: 'test_turntable4',
+  name: 'test_turntable4',
   boards: [{ row: 0, col: 0 }],
   givens: [
     { row: 0, col: 0, value: 5 }, { row: 0, col: 1, value: 3 }, { row: 0, col: 4, value: 7 },

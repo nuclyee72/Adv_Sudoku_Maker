@@ -5,8 +5,8 @@
  * 경로가 있으면 초록 테두리 + 진행 방향 화살표가 자동으로 표시된다.
  */
 export const snake = {
-  id: 'snake-001',
-  name: '스네이크 스도쿠',
+  id: 'test_snake',
+  name: 'test_snake',
   boards: [{ row: 0, col: 0 }],
   grid: [
     [5,3,0,0,7,0,0,0,0],

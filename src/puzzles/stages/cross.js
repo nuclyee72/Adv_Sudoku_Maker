@@ -2,8 +2,8 @@
  * cross.js — 십자형 스도쿠 (4판) 스테이지 데이터
  */
 export const cross = {
-  id: 'cross-001',
-  name: '십자형 스도쿠 (4판)',
+  id: 'test_overlap4',
+  name: 'test_overlap4',
   boards: [
     { row: 0, col: 6 },   // 위
     { row: 6, col: 0 },   // 왼쪽

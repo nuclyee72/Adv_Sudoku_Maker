@@ -2,8 +2,8 @@
  * single.js — 기본 9×9 스도쿠 스테이지 데이터
  */
 export const single = {
-  id: 'single-001',
-  name: '기본 9×9 스도쿠',
+  id: 'test_9x9',
+  name: 'test_9x9',
   boards: [{ row: 0, col: 0 }],
   grid: [
     [5,3,0,0,7,0,0,0,0],

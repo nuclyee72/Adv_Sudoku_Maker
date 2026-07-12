@@ -32,7 +32,7 @@ const helpClose     = document.getElementById('help-close');
 const puzzleList    = document.getElementById('puzzle-list');
 
 // ── 보드 조립 ──
-const initialPuzzle = PUZZLES.find((p) => p.id === 'cross-001') || PUZZLES[0];
+const initialPuzzle = PUZZLES.find((p) => p.id === 'test_overlap4') || PUZZLES[0];
 let activePuzzleId = initialPuzzle.id;
 
 let board = new Board();

@@ -4,8 +4,8 @@
  * 3x3 박스 내부뿐 아니라 박스 경계를 넘는 인접 칸 사이에도 동일하게 적용된다.
  */
 export const inequality = {
-  id: 'inequality-001',
-  name: '부등호 스도쿠 (3x3)',
+  id: 'test_inequality',
+  name: 'test_inequality',
   boards: [{ row: 0, col: 0 }],
   grid: [
     [5,3,0,0,7,0,0,0,0],
