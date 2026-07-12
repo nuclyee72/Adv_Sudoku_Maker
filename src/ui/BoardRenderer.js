@@ -60,11 +60,16 @@ export class BoardRenderer {
     this._gConflicts    = this._g('g-conflicts');
     this._gSnakeOutline = null; // _updateSnakePaths()에서 처음 그릴 때 새로 생성됨
     this._gSnakePath    = null; // 〃
+    this._gTurntableUI       = null; // 턴테이블 손잡이 — 칸 클릭 시 처음 그릴 때 새로 생성됨
+    this._turntableUIStructure = null;
 
     this._drawCells();
+    this._drawTurntableCrosses(); // 칸 배경보다 위, 숫자보다 아래
+    this.svg.appendChild(this._gCellsFg);
     this._drawThinLines();
     this._drawBoxBorders();
     this._drawGridBorders();
+    this._drawTurntableRings();
 
     // 에러 테두리 → 부등호/연속 표시 순으로 위에 쌓이도록 삽입
     this.svg.appendChild(this._gConflicts);
@@ -76,8 +81,11 @@ export class BoardRenderer {
   }
 
   // ── 셀 배경 + 텍스트 ──
+  // 배경(rect)과 글자(text/메모)를 별도 레이어로 나눠서 그린다 — 그 사이에 턴테이블
+  // 중심 십자 레이어를 끼워 넣어 "칸 배경보다는 위, 숫자보다는 아래"에 두기 위함.
   _drawCells() {
-    const g = this._g('g-cells');
+    const gBg = this._g('g-cells-bg');
+    const gFg = this._g('g-cells');
     for (const cell of this.board.getVisibleCells()) {
       const x = this._px(cell.col), y = this._py(cell.row);
 
@@ -88,6 +96,7 @@ export class BoardRenderer {
       rect.setAttribute('fill', 'var(--cell-bg)');
       rect.style.cursor = 'pointer';
       rect.addEventListener('click', () => this._onClick(cell.row, cell.col));
+      gBg.appendChild(rect);
 
       const text = this._el('text');
       text.setAttribute('x', x + CELL / 2);
@@ -98,9 +107,7 @@ export class BoardRenderer {
       text.setAttribute('font-family', 'Outfit, Inter, sans-serif');
       text.setAttribute('pointer-events', 'none');
       text.style.userSelect = 'none';
-
-      g.appendChild(rect);
-      g.appendChild(text);
+      gFg.appendChild(text);
 
       // ── 메모(후보 숫자) — 셀을 1~9 위치(123/456/789)로 나눈 작은 숫자 ──
       const notesGroup = this._el('g');
@@ -120,7 +127,7 @@ export class BoardRenderer {
         notesGroup.appendChild(nt);
         noteTexts.push(nt);
       }
-      g.appendChild(notesGroup);
+      gFg.appendChild(notesGroup);
 
       const conflictRect = this._el('rect');
       conflictRect.setAttribute('x', x);           conflictRect.setAttribute('y', y);
@@ -135,7 +142,8 @@ export class BoardRenderer {
 
       this._els.set(`${cell.row},${cell.col}`, { rect, text, conflictRect, notesGroup, noteTexts });
     }
-    this.svg.appendChild(g);
+    this.svg.appendChild(gBg);
+    this._gCellsFg = gFg; // 턴테이블 십자 레이어를 그린 다음 render()에서 appendChild 됨
   }
 
   // ── 얇은 선 (인접 셀 경계) ──
@@ -241,6 +249,212 @@ export class BoardRenderer {
       g.appendChild(dot);
     }
     this.svg.appendChild(g);
+  }
+
+  /** 중심 십자 표시 — 9x9 판 전체 테두리(GRID_THICK)와 두께를 맞춘다 */
+  _buildTurntableCross(centerX, centerY, opacity) {
+    const cross = this._g('g-turntable-cross');
+    cross.setAttribute('pointer-events', 'none');
+    if (opacity != null) cross.setAttribute('opacity', opacity);
+    const armLen = 11;
+    cross.appendChild(this._line(centerX - armLen, centerY, centerX + armLen, centerY, GRID_THICK, 'var(--turntable-mark)', 'round'));
+    cross.appendChild(this._line(centerX, centerY - armLen, centerX, centerY + armLen, GRID_THICK, 'var(--turntable-mark)', 'round'));
+    return cross;
+  }
+
+  /**
+   * 모든 턴테이블 구조의 중심 십자를 칸 배경 위·숫자 아래 레이어에 항상(옅게) 그려 둔다.
+   * 선택된 구조의 십자는 _showTurntableHandle()에서 같은 요소의 opacity만 바꿔 진하게 만든다.
+   */
+  _drawTurntableCrosses() {
+    this._gTurntableCross = this._g('g-turntable-cross-layer');
+    this._turntableCrossEls = new Map();
+    for (const s of this.board.structures.filter(s => s.type === 'turntable')) {
+      const n = s.size;
+      const centerX = this._px(s.originCol) + (n * CELL) / 2;
+      const centerY = this._py(s.originRow) + (n * CELL) / 2;
+      const cross = this._buildTurntableCross(centerX, centerY, '0.35');
+      this._gTurntableCross.appendChild(cross);
+      this._turntableCrossEls.set(s, cross);
+    }
+    this.svg.appendChild(this._gTurntableCross);
+  }
+
+  /** 모든 턴테이블 구조 주위에 옅은 점선 원을 항상 표시 (선택 시 진한 원+손잡이가 그 위에 겹쳐 그려짐) */
+  _drawTurntableRings() {
+    const g = this._g('g-turntable-rings');
+    for (const s of this.board.structures.filter(s => s.type === 'turntable')) {
+      const n = s.size;
+      const centerX = this._px(s.originCol) + (n * CELL) / 2;
+      const centerY = this._py(s.originRow) + (n * CELL) / 2;
+      const radius  = (n * CELL * Math.SQRT2) / 2 + 8;
+
+      const ring = this._el('circle');
+      ring.setAttribute('cx', centerX);
+      ring.setAttribute('cy', centerY);
+      ring.setAttribute('r', radius);
+      ring.setAttribute('fill', 'none');
+      ring.setAttribute('stroke', 'var(--turntable-mark)');
+      ring.setAttribute('stroke-width', '2');
+      ring.setAttribute('stroke-dasharray', '4 4');
+      ring.setAttribute('opacity', '0.35');
+      ring.setAttribute('pointer-events', 'none');
+      g.appendChild(ring);
+    }
+    this.svg.appendChild(g);
+  }
+
+  /**
+   * 턴테이블 칸을 클릭했을 때, 구조를 감싸는 점선 원 + 위쪽 손잡이를 표시한다.
+   * 손잡이를 드래그하면 안의 값/메모가 실시간으로 회전해 보이고, 놓으면 가장
+   * 가까운 90도로 스냅되어 실제로 칸 내용이 회전 이동한다.
+   */
+  _showTurntableHandle(structure) {
+    // 다른 턴테이블에서 옮겨온 경우, 이전 구조의 십자는 다시 옅게 되돌린다.
+    if (this._turntableUIStructure && this._turntableUIStructure !== structure) {
+      const prevCross = this._turntableCrossEls.get(this._turntableUIStructure);
+      if (prevCross) prevCross.setAttribute('opacity', '0.35');
+    }
+    this._turntableUIStructure = structure;
+
+    if (!this._gTurntableUI) {
+      this._gTurntableUI = this._g('g-turntable-ui');
+      this.svg.appendChild(this._gTurntableUI);
+    }
+    while (this._gTurntableUI.firstChild) this._gTurntableUI.removeChild(this._gTurntableUI.firstChild);
+
+    const n = structure.size;
+    const centerX = this._px(structure.originCol) + (n * CELL) / 2;
+    const centerY = this._py(structure.originRow) + (n * CELL) / 2;
+    const radius  = (n * CELL * Math.SQRT2) / 2 + 8; // 구조 모서리를 넉넉히 감싸는 정도
+
+    const ring = this._el('circle');
+    ring.setAttribute('cx', centerX);
+    ring.setAttribute('cy', centerY);
+    ring.setAttribute('r', radius);
+    ring.setAttribute('fill', 'none');
+    ring.setAttribute('stroke', 'var(--turntable-mark)');
+    ring.setAttribute('stroke-width', '2');
+    ring.setAttribute('stroke-dasharray', '4 4');
+    ring.setAttribute('pointer-events', 'none');
+    this._gTurntableUI.appendChild(ring);
+
+    // 가운데 십자는 칸 배경/숫자 사이의 고정 레이어에 있는 요소를 그대로 진하게 만든다
+    // (숫자를 가리지 않도록 그 레이어는 항상 텍스트보다 아래에 위치함).
+    const cross = this._turntableCrossEls.get(structure);
+    if (cross) cross.removeAttribute('opacity');
+
+    const handle = this._el('circle');
+    handle.setAttribute('cx', centerX);
+    handle.setAttribute('cy', centerY - radius);
+    handle.setAttribute('r', 9);
+    handle.setAttribute('fill', 'var(--turntable-mark)');
+    handle.setAttribute('stroke', 'var(--cell-bg)');
+    handle.setAttribute('stroke-width', '2');
+    handle.style.cursor = 'grab';
+    handle.addEventListener('mousedown', (e) => this._startTurntableDrag(e, structure, centerX, centerY, radius, handle, cross));
+    this._gTurntableUI.appendChild(handle);
+  }
+
+  _hideTurntableHandle() {
+    if (this._turntableUIStructure) {
+      const cross = this._turntableCrossEls.get(this._turntableUIStructure);
+      if (cross) cross.setAttribute('opacity', '0.35');
+    }
+    this._turntableUIStructure = null;
+    if (this._gTurntableUI) {
+      while (this._gTurntableUI.firstChild) this._gTurntableUI.removeChild(this._gTurntableUI.firstChild);
+    }
+  }
+
+  _startTurntableDrag(e, structure, centerX, centerY, radius, handle, cross) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation(); // 보드 패닝(DragPanel)이 같이 시작되지 않도록 차단
+
+    const rect = this.svg.getBoundingClientRect();
+    const centerClientX = rect.left + centerX * this.scale;
+    const centerClientY = rect.top  + centerY * this.scale;
+    const startAngle = Math.atan2(e.clientY - centerClientY, e.clientX - centerClientX);
+
+    const cellEls = structure.coords
+      .map(({ row, col }) => {
+        const el = this._els.get(`${row},${col}`);
+        if (!el) return null;
+        return { el, cx: this._px(col) + CELL / 2, cy: this._py(row) + CELL / 2 };
+      })
+      .filter(Boolean);
+
+    // 드래그 중엔 숫자/메모가 다른 칸 배경에 가려지지 않도록 맨 위 레이어로 옮겨서 그린다.
+    const dragLayer = this._g('g-turntable-drag');
+    for (const { el } of cellEls) {
+      dragLayer.appendChild(el.text);
+      dragLayer.appendChild(el.notesGroup);
+    }
+    this.svg.appendChild(dragLayer);
+
+    let deltaDeg = 0;
+    handle.style.cursor = 'grabbing';
+
+    const onMove = (ev) => {
+      const angle = Math.atan2(ev.clientY - centerClientY, ev.clientX - centerClientX);
+      deltaDeg = (angle - startAngle) * 180 / Math.PI;
+      const rad = deltaDeg * Math.PI / 180;
+      const cos = Math.cos(rad), sin = Math.sin(rad);
+
+      // 숫자 자체는 기울이지 않고, 중심을 기준으로 위치만 공전시킨다 (회전 없는 이동만 적용).
+      for (const { el, cx, cy } of cellEls) {
+        const dx = cx - centerX, dy = cy - centerY;
+        const nx = centerX + (dx * cos - dy * sin);
+        const ny = centerY + (dx * sin + dy * cos);
+        const t = `translate(${nx - cx}, ${ny - cy})`;
+        el.text.setAttribute('transform', t);
+        el.notesGroup.setAttribute('transform', t);
+      }
+      const handleAngle = -Math.PI / 2 + rad;
+      handle.setAttribute('cx', centerX + radius * Math.cos(handleAngle));
+      handle.setAttribute('cy', centerY + radius * Math.sin(handleAngle));
+
+      // 십자 표시는 숫자와 달리 회전량을 그대로 보여주는 용도이므로 실제로 돌린다.
+      cross.setAttribute('transform', `rotate(${deltaDeg}, ${centerX}, ${centerY})`);
+    };
+
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+
+      // 임시 상단 레이어에서 원래 칸 레이어로 되돌린다 (제자리로 돌아오므로 순서는 무관).
+      const gCells = this.svg.querySelector('#g-cells');
+      for (const { el } of cellEls) {
+        el.text.removeAttribute('transform');
+        el.notesGroup.removeAttribute('transform');
+        if (gCells) {
+          gCells.appendChild(el.text);
+          gCells.appendChild(el.notesGroup);
+        }
+      }
+      dragLayer.remove();
+
+      const steps = Math.round(deltaDeg / 90);
+      if (steps !== 0) {
+        const changes = structure.rotate(this.board, steps);
+        this._pushUndo(changes);
+        Validator.validate(this.board);
+        this._updateAll();
+        if (this.onCellSelect && this.selectedCell) this.onCellSelect(this.selectedCell.row, this.selectedCell.col);
+        if (this.board.isSolved()) {
+          setTimeout(() => {
+            this._celebrate();
+            document.dispatchEvent(new CustomEvent('sudoku:solved'));
+          }, 80);
+        }
+      }
+
+      if (this._turntableUIStructure === structure) this._showTurntableHandle(structure);
+    };
+
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
   }
 
   // ── 상태 업데이트 ──
@@ -414,10 +628,9 @@ export class BoardRenderer {
     if (cell.value !== null) {
       text.textContent = cell.value;
       text.setAttribute('fill',
-        cell.isConflict ? 'var(--conflict)'  :
-        sel             ? 'var(--text-sel)'   :
-        cell.isGiven    ? 'var(--text-given)' :
-                          'var(--text-input)');
+        sel          ? 'var(--text-sel)'   :
+        cell.isGiven ? 'var(--text-given)' :
+                       'var(--text-input)');
       text.setAttribute('font-weight', cell.isGiven ? '700' : '500');
       for (const nt of noteTexts) nt.textContent = '';
     } else {
@@ -479,6 +692,15 @@ export class BoardRenderer {
     }
 
     this._updateAll();
+
+    // 턴테이블 칸을 선택했으면 회전 손잡이를 보여주고, 아니면 숨긴다
+    const turntable = this.board.structures.find(s =>
+      s.type === 'turntable' && s.coords.some(c => c.row === row && c.col === col));
+    if (turntable) {
+      if (this._turntableUIStructure !== turntable) this._showTurntableHandle(turntable);
+    } else if (this._turntableUIStructure) {
+      this._hideTurntableHandle();
+    }
   }
 
   inputValue(value) {
@@ -580,11 +802,12 @@ export class BoardRenderer {
   undo() {
     const entry = this._undoStack.pop();
     if (!entry) return;
-    for (const { row, col, prevValue, prevCandidates } of entry) {
+    for (const { row, col, prevValue, prevCandidates, prevIsGiven } of entry) {
       const cell = this.board.getCell(row, col);
       if (!cell) continue;
       cell.value = prevValue;
       cell.candidates = new Set(prevCandidates);
+      if (prevIsGiven !== undefined) cell.isGiven = prevIsGiven; // 턴테이블 회전 되돌리기용
     }
     Validator.validate(this.board);
     if (this.selectedCell) this.selectCell(this.selectedCell.row, this.selectedCell.col);

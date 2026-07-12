@@ -11,7 +11,9 @@ import { overlapping } from './stages/overlapping.js';
 import { inequality } from './stages/inequality.js';
 import { consecutive } from './stages/consecutive.js';
 import { snake } from './stages/snake.js';
+import { turntable } from './stages/turntable.js';
+import { turntable4 } from './stages/turntable4.js';
 
-const STAGES = [single, cross, overlapping, inequality, consecutive, snake];
+const STAGES = [single, cross, overlapping, inequality, consecutive, snake, turntable, turntable4];
 
 export const PUZZLES = STAGES.map(buildPuzzle);

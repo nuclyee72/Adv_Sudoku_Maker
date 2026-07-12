@@ -15,6 +15,7 @@
   --ineq-mark:         #5c6370;
   --snake-default:     #e0a72c;
   --snake-success:     #2f9e60;
+  --turntable-mark:    #2f9e60;
 }
 
 * { box-sizing: border-box; }
@@ -46,6 +47,7 @@ html, body {
 
 #sudoku-svg {
   display: block;
+  overflow: visible; /* 턴테이블 회전 손잡이가 보드 가장자리에서 잘리지 않도록 */
   transform-origin: 0 0;
   filter: drop-shadow(0 24px 48px rgba(20, 24, 40, 0.18));
 }
