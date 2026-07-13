@@ -16,6 +16,7 @@
   --snake-default:     #e0a72c;
   --snake-success:     #2f9e60;
   --turntable-mark:    #2f9e60;
+  --turntable-mark-pale: #b6ddc7; /* 십자 기본 상태 - 불투명해서 칸이 하이라이트돼도 색이 안 변함 */
 }
 
 * { box-sizing: border-box; }
@@ -202,6 +203,144 @@ html, body {
   flex: 0 1 auto;
   height: 36px;
   padding: 0 12px;
+}
+
+/* ── 모양 선택 드롭다운(클릭 시 펼쳐지며 보드 배치를 미니어처로 보여줌) ── */
+.shape-picker {
+  position: relative;
+  width: 100%;
+}
+
+.shape-picker-trigger {
+  width: 100%;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 12px;
+  background: #f0f1f4;
+  color: var(--text-given);
+  font-family: 'Outfit', 'Inter', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.shape-picker-trigger:hover {
+  background: #e6e7ec;
+}
+
+.shape-picker-trigger:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.shape-picker-trigger-label {
+  flex: 1;
+  text-align: left;
+}
+
+.shape-picker-arrow {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: rgba(35, 39, 51, 0.5);
+  transition: transform 0.15s ease;
+}
+
+.shape-picker.open .shape-picker-arrow {
+  transform: rotate(180deg);
+}
+
+.shape-picker-menu {
+  display: none;
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 5;
+  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+  gap: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 10px;
+  background: #ffffff;
+  border-radius: 12px;
+  border: 1px solid rgba(35, 39, 51, 0.1);
+  box-shadow: 0 12px 28px rgba(20, 24, 40, 0.18);
+}
+
+.shape-picker.open .shape-picker-menu {
+  display: grid;
+}
+
+.shape-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 4px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-given);
+  font-family: 'Outfit', 'Inter', sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.3;
+  text-align: center;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.shape-option:hover {
+  background: #f0f1f4;
+}
+
+.shape-option.active {
+  background: var(--text-input);
+  color: #ffffff;
+}
+
+.shape-thumb-svg {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  color: var(--text-input);
+}
+
+.shape-picker-trigger .shape-thumb-svg {
+  width: 24px;
+  height: 24px;
+}
+
+.shape-option.active .shape-thumb-svg {
+  color: #ffffff;
+}
+
+.shape-thumb-svg rect {
+  fill: currentColor;
+  fill-opacity: 0.35;
+  stroke: currentColor;
+  stroke-width: 0.6;
+}
+
+.shape-thumb-random {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+}
+
+.shape-option .shape-thumb-random {
+  width: 30px;
+  height: 30px;
+  font-size: 20px;
 }
 
 .generate-picker {
@@ -493,6 +632,26 @@ html, body {
   display: none;
 }
 
+.leaderboard-room-code {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 6px;
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(35, 39, 51, 0.1);
+  font-size: 12px;
+  color: rgba(35, 39, 51, 0.6);
+}
+
+.leaderboard-room-code strong {
+  font-family: 'Outfit', 'Inter', sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: var(--text-input);
+}
+
 .battle-leaderboard-list {
   display: flex;
   flex-direction: column;
@@ -694,6 +853,11 @@ html, body {
 .kp-extra-home {
   flex: 0 0 auto;
   margin: 8px 16px 16px;
+}
+
+.kp-extra-vote {
+  flex: 0 0 auto;
+  margin: 8px 16px 0;
 }
 
 .kp-extra-btn {
@@ -970,6 +1134,28 @@ html, body {
 
 .modal-btn-danger:hover {
   background: #cc3535;
+}
+
+.modal-btn-primary {
+  background: var(--text-input);
+  color: #ffffff;
+}
+
+.modal-btn-primary:hover {
+  background: var(--text-sel);
+}
+
+.coop-vote-status {
+  flex: 0 0 auto;
+  width: 22px;
+  font-family: 'Outfit', 'Inter', sans-serif;
+  font-weight: 700;
+  text-align: center;
+  color: rgba(35, 39, 51, 0.35);
+}
+
+.coop-vote-status.agreed {
+  color: var(--text-input);
 }
 
 /* ── 저장/불러오기, 도움말, 퍼즐 선택 — 키패드 패널과 같은 지위의 떠있는 패널 ──

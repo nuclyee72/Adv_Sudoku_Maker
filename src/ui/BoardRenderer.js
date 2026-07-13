@@ -90,6 +90,10 @@ export class BoardRenderer {
     Validator.validate(this.board);
     this._updateAll();
 
+    // 메모(후보 숫자) 레이어 — 스네이크 시작점 표시 등 다른 장식에 가려지지 않도록
+    // 맨 마지막(원격 커서 바로 아래)에 둔다
+    this.svg.appendChild(this._gCellsNotes);
+
     // 원격 커서 레이어 — 항상 맨 위(가장 나중에 append)에 그려지도록 마지막에 추가
     this._gRemoteCursors = this._g('g-remote-cursors');
     this._gRemoteCursors.setAttribute('pointer-events', 'none');
@@ -102,6 +106,10 @@ export class BoardRenderer {
   _drawCells() {
     const gBg = this._g('g-cells-bg');
     const gFg = this._g('g-cells');
+    // 메모는 스네이크 시작점 표시 등 다른 장식 위에 항상 보이도록 별도 최상단 레이어에 그린다
+    // (render()에서 맨 마지막 쪽에 append됨) — gFg와 분리해 관리한다.
+    const gNotes = this._g('g-cells-notes');
+    this._gCellsNotes = gNotes;
     for (const cell of this.board.getVisibleCells()) {
       const x = this._px(cell.col), y = this._py(cell.row);
 
@@ -143,7 +151,7 @@ export class BoardRenderer {
         notesGroup.appendChild(nt);
         noteTexts.push(nt);
       }
-      gFg.appendChild(notesGroup);
+      gNotes.appendChild(notesGroup);
 
       const conflictRect = this._el('rect');
       conflictRect.setAttribute('x', x);           conflictRect.setAttribute('y', y);
@@ -275,14 +283,19 @@ export class BoardRenderer {
     this.svg.appendChild(g);
   }
 
-  /** 중심 십자 표시 — 9x9 판 전체 테두리(GRID_THICK)와 두께를 맞춘다 */
-  _buildTurntableCross(centerX, centerY, opacity) {
+  /**
+   * 중심 십자 표시 — 9x9 판 전체 테두리(GRID_THICK)와 두께를 맞춘다.
+   * 색은 opacity로 옅게 만드는 대신(칸이 하이라이트되면 배경색과 겹쳐 blend 결과가 달라져
+   * 보이는 문제가 있었다) 처음부터 불투명한 옅은 색(--turntable-mark-pale)을 쓴다 - 배경이
+   * 뭐든 항상 같은 색으로 보인다. 선택 시에는 --tt-cross-color를 그룹에 얹어 진한 색으로 덮어쓴다.
+   */
+  _buildTurntableCross(centerX, centerY) {
     const cross = this._g('g-turntable-cross');
     cross.setAttribute('pointer-events', 'none');
-    if (opacity != null) cross.setAttribute('opacity', opacity);
     const armLen = 11;
-    cross.appendChild(this._line(centerX - armLen, centerY, centerX + armLen, centerY, GRID_THICK, 'var(--turntable-mark)', 'round'));
-    cross.appendChild(this._line(centerX, centerY - armLen, centerX, centerY + armLen, GRID_THICK, 'var(--turntable-mark)', 'round'));
+    const stroke = 'var(--tt-cross-color, var(--turntable-mark-pale))';
+    cross.appendChild(this._line(centerX - armLen, centerY, centerX + armLen, centerY, GRID_THICK, stroke, 'round'));
+    cross.appendChild(this._line(centerX, centerY - armLen, centerX, centerY + armLen, GRID_THICK, stroke, 'round'));
     return cross;
   }
 
@@ -297,7 +310,7 @@ export class BoardRenderer {
       const n = s.size;
       const centerX = this._px(s.originCol) + (n * CELL) / 2;
       const centerY = this._py(s.originRow) + (n * CELL) / 2;
-      const cross = this._buildTurntableCross(centerX, centerY, '0.35');
+      const cross = this._buildTurntableCross(centerX, centerY);
       this._gTurntableCross.appendChild(cross);
       this._turntableCrossEls.set(s, cross);
     }
@@ -337,7 +350,7 @@ export class BoardRenderer {
     // 다른 턴테이블에서 옮겨온 경우, 이전 구조의 십자는 다시 옅게 되돌린다.
     if (this._turntableUIStructure && this._turntableUIStructure !== structure) {
       const prevCross = this._turntableCrossEls.get(this._turntableUIStructure);
-      if (prevCross) prevCross.setAttribute('opacity', '0.35');
+      if (prevCross) prevCross.style.removeProperty('--tt-cross-color');
     }
     this._turntableUIStructure = structure;
 
@@ -366,7 +379,7 @@ export class BoardRenderer {
     // 가운데 십자는 칸 배경/숫자 사이의 고정 레이어에 있는 요소를 그대로 진하게 만든다
     // (숫자를 가리지 않도록 그 레이어는 항상 텍스트보다 아래에 위치함).
     const cross = this._turntableCrossEls.get(structure);
-    if (cross) cross.removeAttribute('opacity');
+    if (cross) cross.style.setProperty('--tt-cross-color', 'var(--turntable-mark)');
 
     const handle = this._el('circle');
     handle.setAttribute('cx', centerX);
@@ -383,7 +396,7 @@ export class BoardRenderer {
   _hideTurntableHandle() {
     if (this._turntableUIStructure) {
       const cross = this._turntableCrossEls.get(this._turntableUIStructure);
-      if (cross) cross.setAttribute('opacity', '0.35');
+      if (cross) cross.style.removeProperty('--tt-cross-color');
     }
     this._turntableUIStructure = null;
     if (this._gTurntableUI) {

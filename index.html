@@ -147,11 +147,13 @@
 
   <!-- 배틀 모드 리더보드 -->
   <div id="battle-leaderboard" class="battle-leaderboard hidden">
+    <div class="leaderboard-room-code"><span>방 코드</span><strong id="battle-leaderboard-code"></strong></div>
     <div id="battle-leaderboard-list" class="battle-leaderboard-list"></div>
   </div>
 
   <!-- 협동 모드 진행 현황 -->
   <div id="coop-leaderboard" class="battle-leaderboard hidden">
+    <div class="leaderboard-room-code"><span>방 코드</span><strong id="coop-leaderboard-code"></strong></div>
     <div id="coop-leaderboard-list" class="battle-leaderboard-list"></div>
   </div>
 
@@ -161,7 +163,7 @@
       <h2 class="floating-panel-title">게임 종료!</h2>
       <div id="battle-ended-list" class="battle-leaderboard-list"></div>
       <div class="modal-actions">
-        <button id="btn-battle-ended-leave" class="modal-btn modal-btn-cancel" type="button">메인 화면으로</button>
+        <button id="btn-battle-ended-continue" class="modal-btn modal-btn-cancel" type="button">대기실로</button>
       </div>
     </div>
   </div>
@@ -173,8 +175,19 @@
       <div id="coop-ended-time" class="coop-ended-time"></div>
       <div id="coop-ended-list" class="battle-leaderboard-list"></div>
       <div class="modal-actions">
-        <button id="btn-coop-ended-leave" class="modal-btn modal-btn-cancel" type="button">메인 화면으로</button>
+        <button id="btn-coop-ended-continue" class="modal-btn modal-btn-cancel" type="button">대기실로</button>
       </div>
+    </div>
+  </div>
+
+  <!-- 협동 모드 중지 투표 패널 - 도움말 창처럼 게임판을 막지 않는 떠있는 패널 -->
+  <div id="coop-vote-panel" class="floating-panel">
+    <button id="coop-vote-close" class="floating-panel-close" type="button" aria-label="닫기">✕</button>
+    <h2 class="floating-panel-title">중지 투표</h2>
+    <div id="coop-vote-list" class="battle-leaderboard-list"></div>
+    <div class="modal-actions">
+      <button id="btn-coop-vote-disagree" class="modal-btn modal-btn-cancel" type="button">반대</button>
+      <button id="btn-coop-vote-agree" class="modal-btn modal-btn-primary" type="button">찬성</button>
     </div>
   </div>
 
@@ -192,6 +205,7 @@
             <button id="btn-toggle-timer" class="kp-extra-btn" type="button">타이머</button>
           </div>
           <button id="btn-open-help" class="kp-extra-btn kp-extra-help" type="button">도움말</button>
+          <button id="btn-coop-stop-vote" class="kp-extra-btn kp-extra-vote hidden" type="button">중지 투표</button>
           <button id="btn-go-landing" class="kp-extra-btn kp-extra-home" type="button">메인 화면으로</button>
         </div>
       </div>

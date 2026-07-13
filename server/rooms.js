@@ -79,6 +79,10 @@ function requireWaiting(room) {
   if (room.status !== 'waiting') throw new RoomError(409, '대기 중인 방에서만 가능합니다.');
 }
 
+function requireEnded(room) {
+  if (room.status !== 'ended') throw new RoomError(409, '게임이 끝난 방에서만 가능합니다.');
+}
+
 /** 참가(join) 전용 - 협동은 진행 중인 방에도 도중 참가를 허용한다(다 같이 쓰는 보드라 늦게 들어와도 자연스러움).
  * 배틀은 개인전 진행 상황이 이미 갈렸으므로 여전히 대기 중일 때만 참가할 수 있다. */
 function requireJoinable(room) {
@@ -129,6 +133,9 @@ export function roomToJSON(room, viewerToken) {
   if (room.mode === 'coop' && inPlay && room.coopBoard) {
     json.coopCells = serializeCoopCells(room);
   }
+  if (room.mode === 'coop' && room.status === 'playing' && room.coopVote) {
+    json.coopVote = { votes: [...room.coopVote.votes] };
+  }
 
   if (viewerToken) {
     const viewer = room.players.get(viewerToken);
@@ -170,6 +177,7 @@ export function createRoom({ nickname, mode, maxPlayers, templateId }) {
     puzzle: null,
     playingStartedAt: null,
     endedAt: null,
+    coopVote: null,
   };
   rooms.set(code, room);
 
@@ -259,6 +267,7 @@ export function startRoom(code, token, { puzzle } = {}) {
   room.playingStartedAt = Date.now() + BATTLE_COUNTDOWN_MS;
 
   room.status = 'playing';
+  room.coopVote = null; // 이전 라운드에 남아있던 투표 상태 방어적으로 초기화
   room.updatedAt = Date.now();
   return roomToJSON(room, token);
 }
@@ -298,9 +307,59 @@ export function forfeitRoom(code, token) {
   return roomToJSON(room, token);
 }
 
+/** 방은 그대로 유지한 채(참가자/코드 불변) 다음 라운드를 위해 대기 상태로 되돌린다.
+ * 게임 종료(returnToWaiting) / 협동 중지 투표 전원 찬성(castCoopVote) 두 경로에서 공유한다. */
+function resetRoomToWaiting(room) {
+  room.status = 'waiting';
+  room.puzzle = null;
+  room.playingStartedAt = null;
+  room.endedAt = null;
+  room.coopBoard = undefined;
+  room.coopVote = null;
+  for (const p of room.players.values()) {
+    p.gameStatus = null;
+    p.finishedAt = null;
+  }
+  room.updatedAt = Date.now();
+}
+
+/** 게임 종료 후 "대기실로" — 방장뿐 아니라 누구나 부를 수 있다 - 다음 라운드로 넘어가는 건
+ * 게임 시작처럼 신중해야 할 액션이 아니라, 결과 확인 후 다 같이 대기실로 돌아가는 것뿐이라서. */
+export function returnToWaiting(code, token) {
+  const room = getRoomOrThrow(code);
+  getPlayerOrThrow(room, token);
+  requireEnded(room);
+  resetRoomToWaiting(room);
+  return roomToJSON(room, token);
+}
+
 function requireCoopPlaying(room) {
   if (room.mode !== 'coop') throw new RoomError(409, '협동 모드 방이 아닙니다.');
   if (room.status !== 'playing') throw new RoomError(409, '진행 중인 게임이 아닙니다.');
+}
+
+/**
+ * 협동 모드 중지 투표. "찬성"은 투표가 없으면 새로 시작하면서 자신도 찬성으로 세고,
+ * 이미 진행 중이면 그냥 자신의 표를 더한다 - 그래서 "중지 투표" 버튼 클릭 자체가 곧
+ * 첫 찬성표라 별도의 "투표 시작" API가 필요 없다. 전원이 찬성하면 즉시 대기실로 되돌린다.
+ * "반대"는 한 명만 눌러도 그 즉시 투표 전체를 취소한다(만장일치가 아니면 의미가 없어서).
+ */
+export function castCoopVote(code, token, agree) {
+  const room = getRoomOrThrow(code);
+  const player = getPlayerOrThrow(room, token);
+  requireCoopPlaying(room);
+
+  if (!agree) {
+    room.coopVote = null;
+  } else {
+    if (!room.coopVote) room.coopVote = { votes: new Set() };
+    room.coopVote.votes.add(player.id);
+    if (room.coopVote.votes.size >= room.players.size) {
+      resetRoomToWaiting(room);
+    }
+  }
+  room.updatedAt = Date.now();
+  return roomToJSON(room, token);
 }
 
 /** Validator 재검증 + 완성 여부 판정 - 완성됐으면 room을 종료 상태로 전환(공유 완성 시각 기록) */
@@ -433,6 +492,10 @@ export function leaveRoom(code, token) {
 
   room.updatedAt = Date.now();
   checkBattleEnd(room);
+  // 나간 사람 때문에 남은 인원 전체가 이미 찬성 상태였던 중지 투표가 뒤늦게 성립될 수 있다
+  if (room.coopVote && room.coopVote.votes.size >= room.players.size) {
+    resetRoomToWaiting(room);
+  }
   return { room: roomToJSON(room), removedPlayerId: player.id };
 }
 

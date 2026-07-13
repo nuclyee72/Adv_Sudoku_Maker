@@ -269,6 +269,29 @@ app.post('/api/rooms/:code/forfeit', (req, res) => {
   }
 });
 
+app.post('/api/rooms/:code/return-to-waiting', (req, res) => {
+  try {
+    const token = getToken(req);
+    const state = rooms.returnToWaiting(req.params.code, token);
+    broadcastRoomState(req.params.code);
+    res.json(state);
+  } catch (err) {
+    handleRoomError(res, err);
+  }
+});
+
+app.post('/api/rooms/:code/coop-vote', (req, res) => {
+  try {
+    const token = getToken(req);
+    const { agree } = req.body ?? {};
+    const state = rooms.castCoopVote(req.params.code, token, !!agree);
+    broadcastRoomState(req.params.code);
+    res.json(state);
+  } catch (err) {
+    handleRoomError(res, err);
+  }
+});
+
 app.post('/api/rooms/:code/coop-load', (req, res) => {
   try {
     const token = getToken(req);

@@ -24,3 +24,29 @@ export const shapes = [
 export function getShape(shapeId) {
   return shapes.find(s => s.id === shapeId) ?? null;
 }
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+/** 모양의 보드 배치를 미니어처 SVG로 그려준다(자동 생성 선택 UI 미리보기용). */
+export function renderShapeThumb(shape) {
+  const rows = shape.boards.map(b => b.row);
+  const cols = shape.boards.map(b => b.col);
+  const minRow = Math.min(...rows);
+  const minCol = Math.min(...cols);
+  const w = Math.max(...cols) + 9 - minCol;
+  const h = Math.max(...rows) + 9 - minRow;
+
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+  svg.classList.add('shape-thumb-svg');
+  for (const b of shape.boards) {
+    const rect = document.createElementNS(SVG_NS, 'rect');
+    rect.setAttribute('x', b.col - minCol);
+    rect.setAttribute('y', b.row - minRow);
+    rect.setAttribute('width', 9);
+    rect.setAttribute('height', 9);
+    rect.setAttribute('rx', 1.2);
+    svg.appendChild(rect);
+  }
+  return svg;
+}

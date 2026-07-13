@@ -6,7 +6,7 @@ import { BoardRenderer } from './ui/BoardRenderer.js';
 import { DragPanel } from './ui/DragPanel.js';
 import { Keypad } from './ui/Keypad.js';
 import { PUZZLES } from './puzzles/index.js';
-import { shapes as GENERATE_SHAPES } from './generator/shapes.js';
+import { shapes as GENERATE_SHAPES, getShape, renderShapeThumb } from './generator/shapes.js';
 import {
   ELEMENT_KEYS, DIFFICULTIES, ELEMENT_LABELS, DIFFICULTY_LABELS,
   resolveRandomSelection, encodeSelectionId, decodeSelectionId,
@@ -105,19 +105,28 @@ const btnWrLeave        = document.getElementById('btn-wr-leave');
 const btnWrCopyCode     = document.getElementById('btn-wr-copy-code');
 
 const battleLeaderboard      = document.getElementById('battle-leaderboard');
+const battleLeaderboardCode  = document.getElementById('battle-leaderboard-code');
 const battleLeaderboardList  = document.getElementById('battle-leaderboard-list');
 const battleCountdownOverlay = document.getElementById('battle-countdown-overlay');
 const battleCountdownNumber  = document.getElementById('battle-countdown-number');
 const battleEndedOverlay    = document.getElementById('battle-ended-overlay');
 const battleEndedList       = document.getElementById('battle-ended-list');
-const btnBattleEndedLeave   = document.getElementById('btn-battle-ended-leave');
+const btnBattleEndedContinue = document.getElementById('btn-battle-ended-continue');
 
 const coopLeaderboard     = document.getElementById('coop-leaderboard');
+const coopLeaderboardCode = document.getElementById('coop-leaderboard-code');
 const coopLeaderboardList = document.getElementById('coop-leaderboard-list');
 const coopEndedOverlay = document.getElementById('coop-ended-overlay');
 const coopEndedList    = document.getElementById('coop-ended-list');
 const coopEndedTime    = document.getElementById('coop-ended-time');
-const btnCoopEndedLeave = document.getElementById('btn-coop-ended-leave');
+const btnCoopEndedContinue = document.getElementById('btn-coop-ended-continue');
+
+const btnCoopStopVote     = document.getElementById('btn-coop-stop-vote');
+const coopVotePanel       = document.getElementById('coop-vote-panel');
+const coopVoteClose       = document.getElementById('coop-vote-close');
+const coopVoteList        = document.getElementById('coop-vote-list');
+const btnCoopVoteAgree    = document.getElementById('btn-coop-vote-agree');
+const btnCoopVoteDisagree = document.getElementById('btn-coop-vote-disagree');
 
 // renderer.onCellSelect(아래)가 참조하므로, renderer.selectFirstCell()이 모듈 초기화 중
 // 동기적으로 처음 호출되기 전에 반드시 선언돼 있어야 한다(TDZ 방지).
@@ -203,7 +212,8 @@ function isFloatingPanelOpen() {
   return savePanel.classList.contains('show')
     || helpPanel.classList.contains('show')
     || puzzlePanel.classList.contains('show')
-    || generatePanel.classList.contains('show');
+    || generatePanel.classList.contains('show')
+    || coopVotePanel.classList.contains('show');
 }
 
 /** 저장/도움말/퍼즐 선택 패널 — 최초로 열릴 때만 화면 중앙 좌표를 계산해 배치, 이후엔 드래그로 옮긴 위치 유지 */
@@ -221,6 +231,7 @@ new DragPanel(savePanel, savePanel, { clamp: 'partial', minVisible: 40 });
 new DragPanel(helpPanel, helpPanel, { clamp: 'partial', minVisible: 40 });
 new DragPanel(puzzlePanel, puzzlePanel, { clamp: 'partial', minVisible: 40 });
 new DragPanel(generatePanel, generatePanel, { clamp: 'partial', minVisible: 40 });
+new DragPanel(coopVotePanel, coopVotePanel, { clamp: 'partial', minVisible: 40 });
 
 // ── 확인 모달 (모두 지우기 / 불러오기 / 퍼즐 변경 등 공용) ──
 let pendingConfirmAction = null;
@@ -433,6 +444,75 @@ function renderSingleSelectGroup(container, options, selectedId, disabled, onSel
   }
 }
 
+/** 모양 id에 맞는 미니 미리보기 노드('랜덤'은 보드 배치가 없으므로 주사위 이모지로 대신한다) */
+function buildShapeThumb(shapeId) {
+  const shape = getShape(shapeId);
+  if (!shape) {
+    const span = document.createElement('span');
+    span.className = 'shape-thumb-random';
+    span.textContent = '🎲';
+    return span;
+  }
+  return renderShapeThumb(shape);
+}
+
+/**
+ * 모양 선택기 — 클릭하면 펼쳐지는 커스텀 드롭다운으로, 각 보기를 보드 배치 미니어처와 함께 보여준다.
+ * 문서 전체에 걸린 outside-click 리스너(closeAllShapePickers 참고)가 바깥 클릭 시 닫아준다.
+ */
+function renderShapeGroup(container, options, selectedId, disabled, onSelect) {
+  container.innerHTML = '';
+  const selected = options.find(o => o.id === selectedId) ?? options[0];
+
+  const wrap = document.createElement('div');
+  wrap.className = 'shape-picker';
+
+  const trigger = document.createElement('button');
+  trigger.type = 'button';
+  trigger.className = 'shape-picker-trigger';
+  trigger.disabled = disabled;
+  trigger.appendChild(buildShapeThumb(selected.id));
+  const triggerLabel = document.createElement('span');
+  triggerLabel.className = 'shape-picker-trigger-label';
+  triggerLabel.textContent = selected.label;
+  trigger.appendChild(triggerLabel);
+  const arrow = document.createElement('span');
+  arrow.className = 'shape-picker-arrow';
+  arrow.textContent = '▾';
+  trigger.appendChild(arrow);
+  trigger.addEventListener('click', () => {
+    const willOpen = !wrap.classList.contains('open');
+    closeAllShapePickers();
+    wrap.classList.toggle('open', willOpen);
+  });
+
+  const menu = document.createElement('div');
+  menu.className = 'shape-picker-menu';
+  for (const opt of options) {
+    const optBtn = document.createElement('button');
+    optBtn.type = 'button';
+    optBtn.className = 'shape-option';
+    optBtn.classList.toggle('active', opt.id === selectedId);
+    optBtn.appendChild(buildShapeThumb(opt.id));
+    const optLabel = document.createElement('span');
+    optLabel.textContent = opt.label;
+    optBtn.appendChild(optLabel);
+    optBtn.addEventListener('click', () => onSelect(opt.id));
+    menu.appendChild(optBtn);
+  }
+
+  wrap.append(trigger, menu);
+  container.appendChild(wrap);
+}
+
+function closeAllShapePickers() {
+  document.querySelectorAll('.shape-picker.open').forEach((el) => el.classList.remove('open'));
+}
+document.addEventListener('click', (e) => {
+  if (e.target.closest('.shape-picker')) return;
+  closeAllShapePickers();
+});
+
 function renderElementGroup(container, elements, disabled, onToggle) {
   container.innerHTML = '';
   for (const key of ELEMENT_KEYS) {
@@ -467,7 +547,7 @@ function createPicker({ shapeEl, elementEl, difficultyEl, onChange = () => {} })
   let disabled = false;
 
   function rerender() {
-    renderSingleSelectGroup(shapeEl, SHAPE_OPTIONS, state.shapeId, disabled, (id) => {
+    renderShapeGroup(shapeEl, SHAPE_OPTIONS, state.shapeId, disabled, (id) => {
       state.shapeId = id; rerender(); onChange(state);
     });
     renderElementGroup(elementEl, state.elements, disabled, (key) => {
@@ -987,9 +1067,18 @@ function handleRoomPush(room) {
       renderer.pruneRemoteCursors(new Set(room.players.map((p) => p.id)));
       renderCoopLeaderboard();
     }
+    syncCoopVoteUI(room);
     return;
   }
 
+  if (waitingRoomScreen.classList.contains('hidden')) {
+    // 배틀 종료/협동 완성 오버레이 등 게임 화면에서 대기실로 돌아온 경우 - 정리 후 화면 전환
+    exitBattleUI();
+    exitCoopUI();
+    closePanel(battleEndedOverlay);
+    closePanel(coopEndedOverlay);
+    enterWaitingRoom();
+  }
   renderWaitingRoom(room);
 }
 
@@ -1059,6 +1148,7 @@ function enterBattleGame(room) {
   battleActive = true;
   battleFinishedLocally = false;
   battleLeaderboard.classList.remove('hidden');
+  battleLeaderboardCode.textContent = room.code;
   renderBattleLeaderboard(room);
   startBattleLeaderboardLoop();
   startSyncedCountdown(room.playingStartedAt); // 이미 시작 시각이 지났으면 내부에서 알아서 스킵
@@ -1135,10 +1225,15 @@ function showBattleEndedOverlay(room) {
   openPanel(battleEndedOverlay);
 }
 
-btnBattleEndedLeave.addEventListener('click', async () => {
-  exitBattleUI();
-  await leaveCurrentRoom();
-  enterLandingAt(landingMulti);
+btnBattleEndedContinue.addEventListener('click', async () => {
+  if (!mp) return;
+  try {
+    // 서버가 방을 'waiting'으로 되돌리면 그 결과가 roomState push로 돌아와 handleRoomPush가
+    // 알아서 대기실 화면으로 전환해준다(다른 참가자들도 동시에 같은 push를 받는다).
+    await roomClient.returnToWaiting(mp.code, mp.token);
+  } catch (err) {
+    console.error(err);
+  }
 });
 
 document.addEventListener('sudoku:solved', () => {
@@ -1202,6 +1297,63 @@ function renderCoopLeaderboard() {
   }
 }
 
+/** room.coopVote(진행 중이면 찬성한 플레이어 id 목록)를 보고 중지 투표 패널을 열거나 닫는다 */
+function syncCoopVoteUI(room) {
+  if (!room.coopVote) {
+    closePanel(coopVotePanel);
+    return;
+  }
+  const agreed = new Set(room.coopVote.votes);
+  coopVoteList.innerHTML = '';
+  for (const p of room.players) {
+    const row = document.createElement('div');
+    row.className = 'battle-leaderboard-row';
+
+    const name = document.createElement('span');
+    name.className = 'battle-nickname';
+    name.textContent = p.nickname;
+    row.appendChild(name);
+
+    const status = document.createElement('span');
+    const hasAgreed = agreed.has(p.id);
+    status.className = 'coop-vote-status' + (hasAgreed ? ' agreed' : '');
+    status.textContent = hasAgreed ? '✓' : '✗';
+    row.appendChild(status);
+
+    coopVoteList.appendChild(row);
+  }
+  openFloatingPanel(coopVotePanel);
+}
+
+coopVoteClose.addEventListener('click', () => closePanel(coopVotePanel));
+
+btnCoopStopVote.addEventListener('click', async () => {
+  if (!mp) return;
+  try {
+    await roomClient.castCoopVote(mp.code, mp.token, true);
+  } catch (err) {
+    console.error(err);
+  }
+});
+
+btnCoopVoteAgree.addEventListener('click', async () => {
+  if (!mp) return;
+  try {
+    await roomClient.castCoopVote(mp.code, mp.token, true);
+  } catch (err) {
+    console.error(err);
+  }
+});
+
+btnCoopVoteDisagree.addEventListener('click', async () => {
+  if (!mp) return;
+  try {
+    await roomClient.castCoopVote(mp.code, mp.token, false);
+  } catch (err) {
+    console.error(err);
+  }
+});
+
 /** 협동 화면에서 벗어날 때(나가기/게임 종료) 공통 정리 */
 function exitCoopUI() {
   coopActive = false;
@@ -1213,6 +1365,8 @@ function exitCoopUI() {
   timerDisplay.classList.remove('show');
   coopLeaderboard.classList.add('hidden');
   btnResetMine.classList.add('hidden');
+  btnCoopStopVote.classList.add('hidden');
+  closePanel(coopVotePanel);
   setMultiplayerControlsDisabled(false);
   btnOpenSave.disabled = false;
 }
@@ -1250,8 +1404,11 @@ function enterCoopGame(room) {
   coopActive = true;
   timerDisplay.classList.add('show');
   coopLeaderboard.classList.remove('hidden');
+  coopLeaderboardCode.textContent = room.code;
   btnResetMine.classList.remove('hidden');
+  btnCoopStopVote.classList.remove('hidden');
   renderCoopLeaderboard();
+  syncCoopVoteUI(room); // 도중 참가 시 이미 진행 중이던 투표가 있으면 곧바로 팝업을 띄워준다
   startCoopTimerLoop();
   startSyncedCountdown(room.playingStartedAt); // 이미 시작 시각이 지났으면 내부에서 알아서 스킵
 
@@ -1298,10 +1455,13 @@ function showCoopEndedOverlay(room) {
   openPanel(coopEndedOverlay);
 }
 
-btnCoopEndedLeave.addEventListener('click', async () => {
-  exitCoopUI();
-  await leaveCurrentRoom();
-  enterLandingAt(landingMulti);
+btnCoopEndedContinue.addEventListener('click', async () => {
+  if (!mp) return;
+  try {
+    await roomClient.returnToWaiting(mp.code, mp.token);
+  } catch (err) {
+    console.error(err);
+  }
 });
 
 // ── 타이머 ──

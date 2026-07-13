@@ -50,6 +50,16 @@ export function leaveRoom(code, token) {
   return request('POST', `/api/rooms/${code}/leave`, { token });
 }
 
+/** 게임 종료 후 방을 나가지 않고 같은 방의 대기실로 돌아간다(전원에게 브로드캐스트됨) */
+export function returnToWaiting(code, token) {
+  return request('POST', `/api/rooms/${code}/return-to-waiting`, { token });
+}
+
+/** 협동 모드 중지 투표 - 찬성(agree:true)은 투표를 시작하거나 자신의 표를 더하고, 반대는 즉시 투표를 취소한다 */
+export function castCoopVote(code, token, agree) {
+  return request('POST', `/api/rooms/${code}/coop-vote`, { token, body: { agree } });
+}
+
 /** 협동 모드 - 로컬 저장 슬롯에서 불러온 스냅샷을 서버로 전송 (서버가 반영 후 전원에게 브로드캐스트) */
 export function coopLoad(code, token, { cells }) {
   return request('POST', `/api/rooms/${code}/coop-load`, { token, body: { cells } });
