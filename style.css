@@ -1289,7 +1289,32 @@ html, body {
   transform: scale(0.95);
 }
 
-/* ── 도움말 목록 ── */
+/* ── 도움말 패널 — 단축키(왼쪽) · 규칙 설명(오른쪽) 2단 구성 ── */
+#help-panel {
+  width: 620px;
+}
+
+.help-columns {
+  display: flex;
+  gap: 24px;
+}
+
+.help-col {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.help-col-title {
+  margin: 0 0 14px;
+  font-family: 'Outfit', 'Inter', sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--text-given);
+  opacity: 0.7;
+}
+
 .help-list {
   list-style: none;
   margin: 0;
@@ -1317,6 +1342,34 @@ html, body {
   color: rgba(35, 39, 51, 0.7);
   margin-left: auto;
   text-align: right;
+}
+
+/* ── 규칙 설명 목록 — 라벨 + 설명 문장을 세로로 쌓는다(단축키 목록과 달리 한 줄에 안 맞음) ── */
+.help-rules {
+  gap: 16px;
+}
+
+.help-rule-item {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+}
+
+.help-rule-label {
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: #f0f1f4;
+  font-family: 'Outfit', 'Inter', sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-given);
+}
+
+.help-rule-desc {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: rgba(35, 39, 51, 0.72);
 }
 
 /* ── 퍼즐 선택 목록 ── */

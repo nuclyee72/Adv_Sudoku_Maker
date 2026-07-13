@@ -296,20 +296,36 @@
   <!-- 도움말 패널 -->
   <div id="help-panel" class="floating-panel">
     <button id="help-close" class="floating-panel-close" type="button" aria-label="닫기">✕</button>
-    <h2 class="floating-panel-title">키보드 단축키</h2>
-    <ul class="help-list">
-      <li><span class="help-keys"><kbd>방향키</kbd></span><span class="help-desc">선택 칸 이동</span></li>
-      <li><span class="help-keys"><kbd>1</kbd>–<kbd>9</kbd></span><span class="help-desc">숫자 입력 (메모 모드면 메모)</span></li>
-      <li><span class="help-keys"><kbd>Delete</kbd>/<kbd>Backspace</kbd></span><span class="help-desc">선택 칸 지우기</span></li>
-      <li><span class="help-keys"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span><span class="help-desc">게임판 이동</span></li>
-      <li><span class="help-keys"><kbd>마우스 휠</kbd></span><span class="help-desc">커서 기준 확대/축소</span></li>
-      <li><span class="help-keys"><kbd>마우스 드래그</kbd></span><span class="help-desc">게임판 · 패널 이동</span></li>
-      <li><span class="help-keys"><kbd>Lshift</kbd></span><span class="help-desc">메모 모드 토글</span></li>
-      <li><span class="help-keys"><kbd>Ctrl</kbd>+<kbd>Z</kbd></span><span class="help-desc">실행 취소</span></li>
-      <li><span class="help-keys"><kbd>Ctrl</kbd>+<kbd>S</kbd></span><span class="help-desc">저장/불러오기 열기</span></li>
-      <li><span class="help-keys"><kbd>H</kbd></span><span class="help-desc">도움말 열기</span></li>
-      <li><span class="help-keys"><kbd>Esc</kbd></span><span class="help-desc">열린 창 닫기</span></li>
-    </ul>
+    <h2 class="floating-panel-title">도움말</h2>
+    <div class="help-columns">
+      <div class="help-col">
+        <h3 class="help-col-title">키보드 단축키</h3>
+        <ul class="help-list">
+          <li><span class="help-keys"><kbd>방향키</kbd></span><span class="help-desc">선택 칸 이동</span></li>
+          <li><span class="help-keys"><kbd>1</kbd>–<kbd>9</kbd></span><span class="help-desc">숫자 입력 (메모 모드면 메모)</span></li>
+          <li><span class="help-keys"><kbd>Delete</kbd>/<kbd>Backspace</kbd></span><span class="help-desc">선택 칸 지우기</span></li>
+          <li><span class="help-keys"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span><span class="help-desc">게임판 이동</span></li>
+          <li><span class="help-keys"><kbd>마우스 휠</kbd></span><span class="help-desc">커서 기준 확대/축소</span></li>
+          <li><span class="help-keys"><kbd>마우스 드래그</kbd></span><span class="help-desc">게임판 · 패널 이동</span></li>
+          <li><span class="help-keys"><kbd>Lshift</kbd></span><span class="help-desc">메모 모드 토글</span></li>
+          <li><span class="help-keys"><kbd>Ctrl</kbd>+<kbd>Z</kbd></span><span class="help-desc">실행 취소</span></li>
+          <li><span class="help-keys"><kbd>Ctrl</kbd>+<kbd>S</kbd></span><span class="help-desc">저장/불러오기 열기</span></li>
+          <li><span class="help-keys"><kbd>H</kbd></span><span class="help-desc">도움말 열기</span></li>
+          <li><span class="help-keys"><kbd>Esc</kbd></span><span class="help-desc">열린 창 닫기</span></li>
+        </ul>
+      </div>
+      <div class="help-col">
+        <h3 class="help-col-title">규칙 설명</h3>
+        <ul class="help-list help-rules">
+          <li class="help-rule-item"><span class="help-rule-label">9x9</span><span class="help-rule-desc">가로줄(행)과 세로줄(열) 안에 1~9가 한 번씩만 들어가야 하는 스도쿠 기본 규칙.</span></li>
+          <li class="help-rule-item"><span class="help-rule-label">3x3</span><span class="help-rule-desc">3x3 박스 안에도 1~9가 한 번씩만 들어가야 하는 규칙.</span></li>
+          <li class="help-rule-item"><span class="help-rule-label">부등호</span><span class="help-rule-desc">인접한 두 칸 사이의 쐐기 표시 — 뾰족한 끝이 가리키는 칸의 숫자가 더 작아야 함.</span></li>
+          <li class="help-rule-item"><span class="help-rule-label">연속</span><span class="help-rule-desc">표시가 있는 인접한 두 칸은 숫자가 연속(차이가 1)이어야 함.</span></li>
+          <li class="help-rule-item"><span class="help-rule-label">스네이크</span><span class="help-rule-desc">표시된 영역의 칸들을 한 번씩 지나는 경로 — 시작 칸부터 한 걸음마다 숫자가 1씩만 오르내려야 함.</span></li>
+          <li class="help-rule-item"><span class="help-rule-label">턴테이블</span><span class="help-rule-desc">3x3~4x4 영역을 90도씩 돌릴 수 있는 판 — 돌리면 숫자·초기 제공 칸·메모가 함께 회전함.</span></li>
+        </ul>
+      </div>
+    </div>
   </div>
 
   </div><!-- /#game-screen -->
