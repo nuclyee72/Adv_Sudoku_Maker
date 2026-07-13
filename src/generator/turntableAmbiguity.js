@@ -8,7 +8,7 @@
  */
 import { countSolutions, makeCheckers } from './backtrack.js';
 import { scrambledTurntableGrid } from './deriveRules.js';
-import { buildDistinctPeerIndex, key } from './peerIndex.js';
+import { key } from './peerIndex.js';
 import { shuffle } from './random.js';
 
 /**
@@ -53,7 +53,6 @@ export async function relaxTurntableAmbiguity(board, turntables, { minPlausible 
   if (!turntables.length) return;
 
   const checkers = makeCheckers(board);
-  const peerIndex = buildDistinctPeerIndex(board);
   const deadline = Date.now() + timeBudgetMs;
   let checksSinceYield = 0;
 
@@ -66,7 +65,7 @@ export async function relaxTurntableAmbiguity(board, turntables, { minPlausible 
       for (let c = 0; c < turntable.size; c++) {
         const row = turntable.originRow + r, col = turntable.originCol + c;
         candidateKeys.add(key(row, col));
-        for (const peerKey of peerIndex.get(key(row, col)) ?? []) candidateKeys.add(peerKey);
+        for (const peerKey of checkers.peerIndex.get(key(row, col)) ?? []) candidateKeys.add(peerKey);
       }
     }
 
@@ -81,7 +80,7 @@ export async function relaxTurntableAmbiguity(board, turntables, { minPlausible 
       const prevValue = cell.value;
       cell.isGiven = false;
       cell.value = null;
-      const { count, capped } = countSolutions(board, { cap: 2, turntableRegions: turntables, nodeCap });
+      const { count, capped } = countSolutions(board, { cap: 2, turntableRegions: turntables, nodeCap, checkers });
       if (capped || count !== 1) {
         cell.value = prevValue;
         cell.isGiven = true;

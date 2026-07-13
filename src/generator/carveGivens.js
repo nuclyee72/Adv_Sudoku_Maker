@@ -5,9 +5,9 @@
  * 그래서 무작위 순서로 한 바퀴만 돌면서 "지금 상태에서 이 칸을 지워도 되는가"만 판정하면
  * 충분하고, 여러 번 훑을 필요가 없다.
  */
-import { countSolutions } from './backtrack.js';
+import { countSolutions, makeCheckers } from './backtrack.js';
 import { isLogicSolvable } from './logicSolver.js';
-import { buildDistinctPeerIndex, key } from './peerIndex.js';
+import { key } from './peerIndex.js';
 import { shuffle } from './random.js';
 
 /**
@@ -16,10 +16,9 @@ import { shuffle } from './random.js';
  * 갈수록(다른 칸이 이미 많이 지워질수록) 남은 칸 하나하나가 유일해를 지탱하는 비중이 커져서
  * 지워질 확률이 낮아지기 때문에, 턴테이블 주변을 뒤로 미루면 사실상 못 지워진다.
  */
-function turntablePriorityKeys(board, turntableRegions) {
+function turntablePriorityKeys(peerIndex, turntableRegions) {
   const keys = new Set();
   if (!turntableRegions.length) return keys;
-  const peerIndex = buildDistinctPeerIndex(board);
   for (const t of turntableRegions) {
     for (let r = 0; r < t.size; r++) {
       for (let c = 0; c < t.size; c++) {
@@ -63,7 +62,12 @@ export async function carveGivens(board, {
   const allCells = board.getVisibleCells();
   for (const cell of allCells) cell.isGiven = true; // 시작점: 전부 given(정답값 그대로)
 
-  const priorityKeys = turntablePriorityKeys(board, turntableRegions);
+  // 캐빙 도중 board.structures는 절대 안 바뀌므로(칸 값만 바뀜), peer/extra 인덱스를 루프
+  // 시작 전 딱 한 번만 만들어 이 함수 안에서 계속 재사용한다 — 후보 칸마다 매번 새로 만들면
+  // (구조체 수 × 좌표 수) 규모의 작업이 후보 수만큼 반복돼 순수 낭비가 된다.
+  const checkers = makeCheckers(board);
+
+  const priorityKeys = turntablePriorityKeys(checkers.peerIndex, turntableRegions);
   const priorityCells = allCells.filter(c => priorityKeys.has(key(c.row, c.col)));
   const restCells = allCells.filter(c => !priorityKeys.has(key(c.row, c.col)));
   const order = [...shuffle(priorityCells), ...shuffle(restCells)];
@@ -79,9 +83,9 @@ export async function carveGivens(board, {
     cell.isGiven = false;
     cell.value = null;
 
-    let keep = requireLogicSolvable ? isLogicSolvable(board) : true;
+    let keep = requireLogicSolvable ? isLogicSolvable(board, { peerIndex: checkers.peerIndex }) : true;
     if (keep) {
-      const { count, capped } = countSolutions(board, { cap: 2, turntableRegions, nodeCap });
+      const { count, capped } = countSolutions(board, { cap: 2, turntableRegions, nodeCap, checkers });
       keep = !capped && count === 1; // capped(노드 상한 초과)는 유일성 미확인 → 안전하게 제거 취소
     }
 

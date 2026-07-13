@@ -7,15 +7,15 @@
 import { buildDistinctPeerIndex, key } from './peerIndex.js';
 import { FULL_MASK, popcount, bitsOf } from './bitmask.js';
 
-export function isLogicSolvable(board) {
-  const peerIndex = buildDistinctPeerIndex(board);
+export function isLogicSolvable(board, { peerIndex } = {}) {
+  const idx = peerIndex ?? buildDistinctPeerIndex(board);
   const units = board.structures.filter(s => s.type === 'row' || s.type === 'col' || s.type === 'box3x3');
   const values = new Map();
   for (const cell of board.getVisibleCells()) values.set(key(cell.row, cell.col), cell.value);
 
   function candidateMask(k) {
     let mask = FULL_MASK;
-    for (const pk of peerIndex.get(k) ?? []) {
+    for (const pk of idx.get(k) ?? []) {
       const v = values.get(pk);
       if (v != null) mask &= ~(1 << v);
     }

@@ -37,20 +37,31 @@ export function makeCheckers(board) {
     return true;
   }
 
-  return { usedMask, extraOk };
+  // peerIndex/extraIndex도 그대로 얹어 반환 — board.structures가 안 바뀌는 동안(예: carveGivens의
+  // 제거 루프 전체) 호출 쪽이 fillRandomSolution/countSolutions에 재사용하도록 넘길 수 있게 한다.
+  return { usedMask, extraOk, peerIndex, extraIndex };
 }
 
 /**
  * 현재 board 상태(비어있지 않은 칸은 전부 고정 컨텍스트로 취급)에서, 나머지 빈 칸을
  * row/col/box 제약 + extra 구조체(inequality/consecutive/snake) 규칙을 만족하도록
  * 랜덤한 순서로 탐색해 하나의 완성 해를 채워 넣는다. 이미 값이 있는 칸은 건드리지 않는다.
- * 성공 시 true(보드에 실제로 값이 채워짐), 실패(막힘/노드 상한 초과) 시 false를 반환하고
- * 시도 중 채운 값은 전부 되돌린다.
+ * 성공 시 true(보드에 실제로 값이 채워짐), 실패(막힘/노드 상한/시간 예산 초과) 시 false를
+ * 반환하고 시도 중 채운 값은 전부 되돌린다.
+ *
+ * 스네이크/턴테이블이 많이 걸린(특히 "어려움") 조합은 사전에 값을 채워둔 칸이 많아 순수
+ * 랜덤 배정이 막다른 길에 자주 몰리는데, nodeCap만 있으면 한 번의 시도가 초 단위로 길게
+ * 막힐 수 있고, 그동안 완전히 동기 실행이라 브라우저 탭이 응답 없음 상태가 된다.
+ * timeBudgetMs로 한 시도의 최대 시간을 못박고(초과 시 실패 처리 — 호출 쪽 generatePuzzle이
+ * 다른 무작위 순서로 재시도), 탐색 중간중간 이벤트 루프에 제어권을 돌려줘 탭이 멈춘 것처럼
+ * 보이지 않게 한다.
  */
-export function fillRandomSolution(board, { nodeCap = 300000 } = {}) {
-  const { usedMask, extraOk } = makeCheckers(board);
+export async function fillRandomSolution(board, { nodeCap = 300000, timeBudgetMs = 8000, checkers } = {}) {
+  const { usedMask, extraOk } = checkers ?? makeCheckers(board);
   const targets = board.getVisibleCells().filter(c => c.value === null);
+  const deadline = Date.now() + timeBudgetMs;
   let nodes = 0;
+  let lastYield = Date.now();
 
   function pickMrvCell() {
     let best = null, bestMask = 0, bestCount = 10;
@@ -67,8 +78,19 @@ export function fillRandomSolution(board, { nodeCap = 300000 } = {}) {
     return best ? { cell: best, mask: bestMask } : null;
   }
 
-  function backtrack() {
+  async function backtrack() {
     if (++nodes > nodeCap) throw new NodeCapExceeded();
+    // 매 노드마다 Date.now()/setTimeout을 부르면 그 자체가 비용이라, 256개마다 한 번만
+    // 확인한다. 실제 이벤트 루프 양보는 마지막 양보로부터 50ms가 지났을 때만 해서,
+    // 노드가 빨리 도는 구간에서 불필요한 setTimeout(0) 클램핑 지연이 쌓이지 않게 한다.
+    if ((nodes & 255) === 0) {
+      const now = Date.now();
+      if (now > deadline) throw new NodeCapExceeded();
+      if (now - lastYield > 50) {
+        lastYield = now;
+        await new Promise(resolve => setTimeout(resolve, 0));
+      }
+    }
     const pick = pickMrvCell();
     if (pick === null) return true; // 빈 칸 없음 = 완성
     if (pick.deadEnd) return false;
@@ -77,14 +99,14 @@ export function fillRandomSolution(board, { nodeCap = 300000 } = {}) {
     const candidates = shuffle(bitsOf(mask));
     for (const v of candidates) {
       cell.value = v;
-      if (extraOk(cell) && backtrack()) return true;
+      if (extraOk(cell) && await backtrack()) return true;
       cell.value = null;
     }
     return false;
   }
 
   try {
-    return backtrack();
+    return await backtrack();
   } catch (e) {
     if (e instanceof NodeCapExceeded) return false;
     throw e;
@@ -100,8 +122,8 @@ export function fillRandomSolution(board, { nodeCap = 300000 } = {}) {
  * 반환값 { count, capped } — capped=true면 nodeCap을 넘겨 정확한 값을 못 셌다는 뜻이므로
  * 호출 쪽에서는 안전하게 "유일하지 않음"으로 취급해야 한다.
  */
-export function countSolutions(board, { cap = 2, turntableRegions = [], nodeCap = 300000 } = {}) {
-  const { usedMask, extraOk } = makeCheckers(board);
+export function countSolutions(board, { cap = 2, turntableRegions = [], nodeCap = 300000, checkers } = {}) {
+  const { usedMask, extraOk } = checkers ?? makeCheckers(board);
   const allCells = board.getVisibleCells();
   let nodes = 0;
   let capped = false;
