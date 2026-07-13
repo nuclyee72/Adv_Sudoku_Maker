@@ -95,6 +95,8 @@ export function fillRandomSolution(board, { nodeCap = 300000 } = {}) {
  * 현재 board 상태(빈 칸이 있는 부분 클루 상태)에서 유효한 완성 해가 몇 개인지 cap까지 센다.
  * turntableRegions가 있으면 그 영역의 회전(최대 4가지)도 미지수로 취급해 분기한다 —
  * 진짜 값 하나로 고정해 버리면 "다른 회전도 우연히 풀릴 가능성"을 놓쳐 유일해 오판정이 난다.
+ * 영역 안의 칸이 이미 비어있어도(null) 안전함 — 회전으로 자리만 옮겨지고, 값은 나머지 빈
+ * 칸들과 함께 일반 백트래킹으로 채워진다.
  * 반환값 { count, capped } — capped=true면 nodeCap을 넘겨 정확한 값을 못 셌다는 뜻이므로
  * 호출 쪽에서는 안전하게 "유일하지 않음"으로 취급해야 한다.
  */
@@ -162,8 +164,13 @@ export function countSolutions(board, { cap = 2, turntableRegions = [], nodeCap 
       // 회전 후보를 곧장 recurse에 넘기면, 남은 미배정 칸이 없거나 이 영역의 peer를
       // 참조하는 칸이 하나도 없을 때 충돌이 전혀 검사되지 않고 "해 1개"로 잘못 셀 수 있다.
       // 그래서 여기서 직접 peer/부가구조체 유효성을 확인한 후에만 recurse한다.
+      // trueGrid에 null(턴테이블 내부의 빈 칸)이 섞여 있으면 회전으로 자리만 옮겨질 뿐이고,
+      // 그 칸은 여기선 충돌 검사 없이 그대로 둬서 이어지는 countRest가 다른 빈 칸들과 함께
+      // 백트래킹으로 값을 채우게 한다.
       const flatCells = cells.flat();
-      const valid = flatCells.every(cell => !(usedMask(cell) & (1 << cell.value)) && extraOk(cell));
+      const valid = flatCells.every(cell =>
+        cell.value === null || (!(usedMask(cell) & (1 << cell.value)) && extraOk(cell))
+      );
       if (valid) total += branchTurntables(idx + 1, remainingCap - total);
 
       if (total >= remainingCap || capped) break;

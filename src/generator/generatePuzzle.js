@@ -37,8 +37,7 @@ async function tryGenerate(template) {
   const { structures: ruleStructures, turntables } = deriveRuleStructures(board, rules, snakeWalks, turntableOrigins);
   board.addStructures(ruleStructures);
 
-  const excludedKeys = reservedKeys;
-  await carveGivens(board, { excludedKeys, turntableRegions: turntables });
+  await carveGivens(board, { turntableRegions: turntables });
 
   const scrambleByOrigin = new Map(
     turntables.map(t => [`${t.originRow},${t.originCol}`, scrambledTurntableGrid(board, t)])
@@ -48,15 +47,18 @@ async function tryGenerate(template) {
 
   const givens = [];
   for (const cell of board.getVisibleCells()) {
-    if (!cell.isGiven) continue;
     const owner = turntableOf(cell.row, cell.col);
     if (!owner) {
+      if (!cell.isGiven) continue;
       givens.push({ row: cell.row, col: cell.col, value: cell.value });
       continue;
     }
-    const grid = scrambleByOrigin.get(`${owner.originRow},${owner.originCol}`);
-    const value = grid[cell.row - owner.originRow][cell.col - owner.originCol];
-    givens.push({ row: cell.row, col: cell.col, value });
+    // 턴테이블 소유 칸은 캐빙이 정한 given/blank가 "회전 0" 기준이라, cell.isGiven을 직접
+    // 보는 대신 스크램블 회전이 반영된 givens grid로 이 좌표가 (표시상) given인지 판단한다.
+    const { values, givens: givenGrid } = scrambleByOrigin.get(`${owner.originRow},${owner.originCol}`);
+    const r = cell.row - owner.originRow, c = cell.col - owner.originCol;
+    if (!givenGrid[r][c]) continue;
+    givens.push({ row: cell.row, col: cell.col, value: values[r][c] });
   }
 
   return {

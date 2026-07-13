@@ -47,6 +47,15 @@ function readGrid(board, originRow, originCol, size) {
   return grid;
 }
 
+function readGivenGrid(board, originRow, originCol, size) {
+  const grid = [];
+  for (let r = 0; r < size; r++) {
+    grid.push([]);
+    for (let c = 0; c < size; c++) grid[r].push(board.getCell(originRow + r, originCol + c).isGiven);
+  }
+  return grid;
+}
+
 function pickTurntableOrigin(board, rule) {
   const size = rule.size;
   const { row, col, height, width } = rule.region;
@@ -154,8 +163,17 @@ export function deriveRuleStructures(board, rules, snakeWalks, turntableOrigins)
 
 export { turntableReservedKeys };
 
-/** 턴테이블 영역의 진짜 값을 스크램블 회전(표시용)으로 바꾼 grid를 돌려준다. */
+/**
+ * 턴테이블 영역의 진짜 값 + given 여부를 스크램블 회전(표시용)으로 함께 옮긴 두 grid를 돌려준다.
+ * 캐빙이 정한 given/blank 패턴은 "회전 0" 기준이라, 화면에 보여줄 회전이 적용되면 어느 좌표가
+ * given으로 보일지도 값과 나란히 돌아가야 한다 — rotateGrid는 순수 배열 회전이라 boolean에도
+ * 그대로 재사용된다.
+ */
 export function scrambledTurntableGrid(board, turntable) {
-  const grid = readGrid(board, turntable.originRow, turntable.originCol, turntable.size);
-  return rotateGrid(grid, turntable.scrambleSteps);
+  const valueGrid = readGrid(board, turntable.originRow, turntable.originCol, turntable.size);
+  const givenGrid = readGivenGrid(board, turntable.originRow, turntable.originCol, turntable.size);
+  return {
+    values: rotateGrid(valueGrid, turntable.scrambleSteps),
+    givens: rotateGrid(givenGrid, turntable.scrambleSteps),
+  };
 }

@@ -11,14 +11,15 @@ import { shuffle } from './random.js';
 
 /**
  * board: 모든 보이는 칸이 정답값으로 채워져 있고, 규칙 구조체(부등호/연속/스네이크/턴테이블)까지
- * 다 붙은 상태여야 한다. excludedKeys("r,c")에 해당하는 칸(턴테이블 영역)은 항상 given으로 남는다.
+ * 다 붙은 상태여야 한다. 턴테이블 영역 칸도 다른 칸과 똑같이 제거를 시도한다 — 회전 방향과
+ * 남은 빈 칸 값을 함께 추리해야 유일해가 되는지는 countSolutions(turntableRegions)가 판정한다.
  * 청크마다 잠깐 이벤트 루프에 양보해서(await) 탭이 안 멈추게 한다.
  */
-export async function carveGivens(board, { excludedKeys = new Set(), turntableRegions = [], chunkSize = 15 } = {}) {
+export async function carveGivens(board, { turntableRegions = [], chunkSize = 15 } = {}) {
   const allCells = board.getVisibleCells();
   for (const cell of allCells) cell.isGiven = true; // 시작점: 전부 given(정답값 그대로)
 
-  const order = shuffle(allCells.filter(c => !excludedKeys.has(`${c.row},${c.col}`)));
+  const order = shuffle(allCells);
   let removedCount = 0;
 
   for (let i = 0; i < order.length; i++) {
