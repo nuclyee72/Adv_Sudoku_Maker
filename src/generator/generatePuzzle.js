@@ -12,12 +12,12 @@ import {
 } from './deriveRules.js';
 import { carveGivens } from './carveGivens.js';
 import { relaxTurntableAmbiguity } from './turntableAmbiguity.js';
-import { isLogicSolvable } from './logicSolver.js';
 
 const MAX_ATTEMPTS = 20;
-// 보드 개수/규칙이 많은 조합(예: 4보드 + 전체 요소 + 어려움)은 시도당 소요 시간 편차가 커서
-// 고정 횟수만으로는 총 소요 시간을 가늠할 수 없다 — 전체 생성에 쓸 수 있는 총 시간을 못박아
-// 두고, 그 안에서 될 때까지(또는 MAX_ATTEMPTS까지) 재시도한다.
+// 보드 개수/규칙이 많은 조합은 시도당 소요 시간 편차가 커서(특히 fillRandomSolution이
+// 사전에 값이 많이 박힌 보드에서 막힐 때) 고정 횟수만으로는 총 소요 시간을 가늠할 수
+// 없다 — 전체 생성에 쓸 수 있는 총 시간을 못박아 두고, 그 안에서 될 때까지(또는
+// MAX_ATTEMPTS까지) 재시도한다.
 const GENERATE_TIME_BUDGET_MS = 30000;
 const EASY_RESTORE_RATIO = 0.35; // "쉬움" 난이도: 지운 칸 중 이 비율만큼 다시 given으로 복원
 
@@ -45,13 +45,7 @@ async function tryGenerate(template) {
   board.addStructures(ruleStructures);
 
   const difficulty = template.difficulty ?? 'normal';
-  const carveOptions = difficulty === 'hard'
-    // "어려움"은 naked/hidden single 게이트를 끄기 때문에 매 후보가 비싼 유일해 검사까지
-    // 가는데, 클루가 줄수록 그 검사 자체가 기하급수적으로 비싸진다 — nodeCap을 줄이고
-    // 전체 캐빙에 시간 예산을 둬서 그 폭주를 막는다(예산 초과분은 안전하게 given으로 남음).
-    ? { turntableRegions: turntables, requireLogicSolvable: false, nodeCap: 20000, timeBudgetMs: 4000 }
-    : { turntableRegions: turntables, requireLogicSolvable: true };
-  const { removedCells } = await carveGivens(board, carveOptions);
+  const { removedCells } = await carveGivens(board, { turntableRegions: turntables, requireLogicSolvable: true });
 
   if (difficulty === 'easy') {
     // 무작위 대신 "가장 나중에 지워진" 칸부터 되돌린다 — removedCells는 캐빙 루프가 지운
@@ -65,11 +59,6 @@ async function tryGenerate(template) {
         cell.value = value;
       }
     }
-  } else if (difficulty === 'hard' && isLogicSolvable(board)) {
-    // 게이트를 끄고 공격적으로 지웠는데도 우연히 naked/hidden single만으로 다 풀려버리면
-    // "어려움"이 사실상 "보통"과 다를 게 없어진다 - 통째로 재시도(다른 무작위 해/캐빙
-    // 순서로 다시 시도하면 보통 이 상황을 피해간다).
-    return null;
   }
 
   // 회전 없이도 정답 방향이 뻔히 보이면(4방향 중 그럴듯한 게 1개뿐이면) 턴테이블이
