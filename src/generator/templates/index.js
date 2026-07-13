@@ -7,10 +7,16 @@
  */
 import { gen_overlap_ineq_cons } from './gen_overlap_ineq_cons.js';
 import { gen_staircase_ineq_snake_turntable_cons } from './gen_staircase_ineq_snake_turntable_cons.js';
+import { gen_diamond_ineq_cons_snake_turntable } from './gen_diamond_ineq_cons_snake_turntable.js';
 import { gen_simple9x9 } from './gen_simple9x9.js';
+import { gen_single_ineq_cons } from './gen_single_ineq_cons.js';
+import { gen_stack_ineq_cons } from './gen_stack_ineq_cons.js';
 
 export const templates = [
   gen_simple9x9,
+  gen_single_ineq_cons,
+  gen_stack_ineq_cons,
   gen_overlap_ineq_cons,
   gen_staircase_ineq_snake_turntable_cons,
+  gen_diamond_ineq_cons_snake_turntable,
 ];

@@ -123,6 +123,11 @@ export function prefillSnakeWalks(board, rules, reservedKeys = new Set()) {
   return walks;
 }
 
+function pairKey(a, b) {
+  const ka = `${a.row},${a.col}`, kb = `${b.row},${b.col}`;
+  return ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`;
+}
+
 /**
  * 완성된 해(board 전체가 채워진 상태) + 미리 정해둔 snake 경로/turntable 배치를 보고
  * 실제 규칙 구조체를 만든다.
@@ -132,21 +137,30 @@ export function prefillSnakeWalks(board, rules, reservedKeys = new Set()) {
 export function deriveRuleStructures(board, rules, snakeWalks, turntableOrigins) {
   const structures = [];
   const turntables = [];
+  // 부등호/연속 규칙이 같은 보드(영역)에 함께 걸리면 같은 칸-쌍에 둘 다 표시될 수 있어
+  // (부등호 꺾쇠 + 연속 점이 같은 자리에 겹쳐 그려짐) 규칙 종류를 가리지 않고 공유한다.
+  const usedPairKeys = new Set();
 
   for (const rule of rules) {
     if (rule.type === 'inequality') {
-      const pairs = adjacentPairsInRegion(board, rule.region);
+      const pairs = adjacentPairsInRegion(board, rule.region)
+        .filter(([a, b]) => !usedPairKeys.has(pairKey(a, b)));
       const n = coverageCount(pairs.length, rule.coverage);
       for (const [a, b] of shuffle(pairs).slice(0, n)) {
         const va = board.getCell(a.row, a.col).value;
         const vb = board.getCell(b.row, b.col).value;
         structures.push(new Inequality(a, b, va > vb ? 'a' : 'b'));
+        usedPairKeys.add(pairKey(a, b));
       }
     } else if (rule.type === 'consecutive') {
       const pairs = adjacentPairsInRegion(board, rule.region)
+        .filter(([a, b]) => !usedPairKeys.has(pairKey(a, b)))
         .filter(([a, b]) => Math.abs(board.getCell(a.row, a.col).value - board.getCell(b.row, b.col).value) === 1);
       const n = coverageCount(pairs.length, rule.coverage);
-      for (const [a, b] of shuffle(pairs).slice(0, n)) structures.push(new Consecutive(a, b));
+      for (const [a, b] of shuffle(pairs).slice(0, n)) {
+        structures.push(new Consecutive(a, b));
+        usedPairKeys.add(pairKey(a, b));
+      }
     } else if (rule.type === 'snake') {
       const found = snakeWalks.find(w => w.rule === rule);
       if (found) structures.push(new Snake(found.walk.cells, found.walk.start));
