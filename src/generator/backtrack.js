@@ -11,7 +11,7 @@ import { shuffle } from './random.js';
 
 class NodeCapExceeded extends Error {}
 
-function makeCheckers(board) {
+export function makeCheckers(board) {
   const peerIndex = buildDistinctPeerIndex(board);
   const extraIndex = buildExtraStructureIndex(board);
 

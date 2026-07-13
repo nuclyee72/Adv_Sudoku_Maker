@@ -6,7 +6,12 @@ import { BoardRenderer } from './ui/BoardRenderer.js';
 import { DragPanel } from './ui/DragPanel.js';
 import { Keypad } from './ui/Keypad.js';
 import { PUZZLES } from './puzzles/index.js';
-import { templates as GENERATE_TEMPLATES } from './generator/templates/index.js';
+import { shapes as GENERATE_SHAPES } from './generator/shapes.js';
+import {
+  ELEMENT_KEYS, DIFFICULTIES, ELEMENT_LABELS, DIFFICULTY_LABELS,
+  resolveRandomSelection, encodeSelectionId, decodeSelectionId,
+  buildTemplateFromSelection,
+} from './generator/composeTemplate.js';
 import { generatePuzzle } from './generator/generatePuzzle.js';
 import * as roomClient from './net/roomClient.js';
 import { reviveStructures } from './puzzles/reviveStructures.js';
@@ -18,6 +23,7 @@ const keypadPanel  = document.getElementById('keypad-panel');
 const keypadGrid   = document.getElementById('keypad-grid');
 const kpToggle     = document.getElementById('kp-toggle');
 const btnResetAll  = document.getElementById('btn-reset-all');
+const btnResetMine = document.getElementById('btn-reset-mine');
 const toast        = document.getElementById('toast');
 const generateStatus = document.getElementById('generate-status');
 
@@ -39,7 +45,10 @@ const generateClose   = document.getElementById('generate-close');
 const saveClose       = document.getElementById('save-close');
 const helpClose       = document.getElementById('help-close');
 const puzzleList      = document.getElementById('puzzle-list');
-const generateList    = document.getElementById('generate-list');
+const genShapeGroup      = document.getElementById('gen-shape-group');
+const genElementGroup    = document.getElementById('gen-element-group');
+const genDifficultyGroup = document.getElementById('gen-difficulty-group');
+const btnGenerateSubmit  = document.getElementById('btn-generate-submit');
 
 const timerToggleBtn    = document.getElementById('btn-toggle-timer');
 const timerDisplay      = document.getElementById('timer-display');
@@ -64,7 +73,9 @@ const lcNickname    = document.getElementById('lc-nickname');
 const lcModeBattle  = document.getElementById('lc-mode-battle');
 const lcModeCoop    = document.getElementById('lc-mode-coop');
 const lcMaxPlayers  = document.getElementById('lc-max-players');
-const lcTemplate    = document.getElementById('lc-template');
+const lcShapeGroup      = document.getElementById('lc-shape-group');
+const lcElementGroup    = document.getElementById('lc-element-group');
+const lcDifficultyGroup = document.getElementById('lc-difficulty-group');
 const lcError       = document.getElementById('lc-error');
 const btnLcSubmit   = document.getElementById('btn-lc-submit');
 const btnLcBack     = document.getElementById('btn-lc-back');
@@ -81,7 +92,9 @@ const wrPlayerList      = document.getElementById('wr-player-list');
 const wrModeBattle      = document.getElementById('wr-mode-battle');
 const wrModeCoop        = document.getElementById('wr-mode-coop');
 const wrMaxPlayers      = document.getElementById('wr-max-players');
-const wrTemplate        = document.getElementById('wr-template');
+const wrShapeGroup      = document.getElementById('wr-shape-group');
+const wrElementGroup    = document.getElementById('wr-element-group');
+const wrDifficultyGroup = document.getElementById('wr-difficulty-group');
 const wrReadonlyNote    = document.getElementById('wr-readonly-note');
 const wrBody            = document.getElementById('wr-body');
 const wrStarting        = document.getElementById('wr-starting');
@@ -239,11 +252,43 @@ confirmModal.addEventListener('click', (e) => {
   if (e.target === confirmModal) cancelConfirm(); // 배경 클릭 시 취소
 });
 
+/**
+ * 협동 모드 "지우기" 계열 버튼 공용: 값은 coopLoad(value:null)로 서버에 보내 전원에게
+ * 브로드캐스트되게 하고(다른 값 입력과 동일한 "서버 확정 후 반영" 경로 - handleRoomPush가
+ * 이미 roomState push마다 coopCells를 재적용하므로 별도 로컬 반영 코드가 필요 없다),
+ * 메모는 서버가 아예 모르는 로컬 전용 값이라 여기서 직접 지운다.
+ */
+async function coopClearCells(cells) {
+  if (!mp || !cells.length) return;
+  for (const { row, col } of cells) board.getCell(row, col)?.candidates.clear();
+  renderer.refresh();
+  await roomClient.coopLoad(mp.code, mp.token, {
+    cells: cells.map((c) => ({ row: c.row, col: c.col, value: null })),
+  });
+}
+
 btnResetAll.addEventListener('click', () => {
   if (boardLocked) return;
   btnResetAll.classList.add('pressed');
   setTimeout(() => btnResetAll.classList.remove('pressed'), 130);
-  askConfirm('입력한 숫자를 모두 지울까요?<br/>초기 제공 숫자는 유지됩니다.', () => renderer.resetBoard());
+  if (coopActive) {
+    const cells = board.getVisibleCells().filter((c) => !c.isGiven && c.value !== null);
+    if (!cells.length) return;
+    askConfirm('입력한 숫자를 모두 지울까요?<br/>모든 참가자의 보드가 함께 지워집니다.', () => coopClearCells(cells));
+  } else {
+    askConfirm('입력한 숫자를 모두 지울까요?<br/>초기 제공 숫자는 유지됩니다.', () => renderer.resetBoard());
+  }
+});
+
+btnResetMine.addEventListener('click', () => {
+  if (boardLocked || !coopActive) return;
+  btnResetMine.classList.add('pressed');
+  setTimeout(() => btnResetMine.classList.remove('pressed'), 130);
+  const myId = lastRoomState?.you?.id;
+  const cells = board.getVisibleCells()
+    .filter((c) => !c.isGiven && c.value !== null && coopCellOwners.get(`${c.row},${c.col}`) === myId);
+  if (!cells.length) return;
+  askConfirm('내가 입력한 숫자만 지울까요?', () => coopClearCells(cells));
 });
 
 // ── 저장 / 불러오기 ──
@@ -316,7 +361,11 @@ document.querySelectorAll('.load-btn').forEach((btn) => {
 });
 
 // ── 퍼즐 선택 ──
-/** structures/givens로 새 Board를 만들어 렌더러에 장착한다 (싱글플레이/배틀 공용) */
+/**
+ * structures/givens로 새 Board를 만들어 렌더러에 장착한다 (싱글플레이/배틀/협동 공용).
+ * 이전 보드 구조 기준으로 저장된 로컬 세이브 슬롯은 새 보드의 칸 배치와 맞지 않을 수 있으므로
+ * (row/col은 같아도 isGiven 등이 달라 그대로 불러오면 깨짐) 매번 새 보드를 장착할 때 비워준다.
+ */
 function mountBoard(structures, givens) {
   board = new Board();
   board.addStructures(structures);
@@ -324,13 +373,13 @@ function mountBoard(structures, givens) {
   renderer.loadBoard(board);
   fitAndCenterBoard();
   renderer.selectFirstCell();
+  clearAllSaveSlots();
+  refreshSaveSlots(); // 세이브 패널이 이미 열려있어도 즉시 "비어있음"으로 반영
 }
 
 function loadPuzzle(puzzle) {
   mountBoard(puzzle.structures, puzzle.givens);
   activePuzzleId = puzzle.id;
-  clearAllSaveSlots();
-  refreshSaveSlots(); // 세이브 패널이 이미 열려있어도 즉시 "비어있음"으로 반영
   closePanel(puzzlePanel);
   if (timerEnabled) armTimer(); // 타이머 켜져있으면 새 퍼즐도 "시작" 누르기 전까지 잠금
 }
@@ -361,7 +410,84 @@ function togglePuzzlePanel() {
 btnOpenPuzzle.addEventListener('click', togglePuzzlePanel);
 puzzleClose.addEventListener('click', () => closePanel(puzzlePanel));
 
-// ── 자동 생성 ──
+// ── 자동 생성: 모양/요소/난이도 선택기 ──
+function createPickerState() {
+  return {
+    shapeId: 'single',
+    elements: { inequality: false, consecutive: false, snake: false, turntable: false, random: false },
+    difficulty: 'normal',
+  };
+}
+
+function renderSingleSelectGroup(container, options, selectedId, disabled, onSelect) {
+  container.innerHTML = '';
+  for (const opt of options) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'mode-toggle-btn';
+    btn.textContent = opt.label;
+    btn.classList.toggle('active', opt.id === selectedId);
+    btn.disabled = disabled;
+    btn.addEventListener('click', () => onSelect(opt.id));
+    container.appendChild(btn);
+  }
+}
+
+function renderElementGroup(container, elements, disabled, onToggle) {
+  container.innerHTML = '';
+  for (const key of ELEMENT_KEYS) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'mode-toggle-btn';
+    btn.textContent = ELEMENT_LABELS[key];
+    btn.classList.toggle('active', elements[key]);
+    btn.disabled = disabled || elements.random;
+    btn.addEventListener('click', () => onToggle(key));
+    container.appendChild(btn);
+  }
+  const randomBtn = document.createElement('button');
+  randomBtn.type = 'button';
+  randomBtn.className = 'mode-toggle-btn';
+  randomBtn.textContent = '랜덤';
+  randomBtn.classList.toggle('active', elements.random);
+  randomBtn.disabled = disabled;
+  randomBtn.addEventListener('click', () => onToggle('random'));
+  container.appendChild(randomBtn);
+}
+
+const SHAPE_OPTIONS = [...GENERATE_SHAPES.map(s => ({ id: s.id, label: s.label })), { id: 'random', label: '랜덤' }];
+const DIFFICULTY_OPTIONS = DIFFICULTIES.map(d => ({ id: d, label: DIFFICULTY_LABELS[d] }));
+
+/**
+ * 모양/요소/난이도 3그룹을 컨테이너에 그려주는 선택기. onChange는 사람이 버튼을 눌러
+ * 값을 바꿨을 때만 불린다(setState로 서버 상태를 반영할 때는 안 불림 - 무한 루프 방지).
+ */
+function createPicker({ shapeEl, elementEl, difficultyEl, onChange = () => {} }) {
+  const state = createPickerState();
+  let disabled = false;
+
+  function rerender() {
+    renderSingleSelectGroup(shapeEl, SHAPE_OPTIONS, state.shapeId, disabled, (id) => {
+      state.shapeId = id; rerender(); onChange(state);
+    });
+    renderElementGroup(elementEl, state.elements, disabled, (key) => {
+      state.elements[key] = !state.elements[key]; rerender(); onChange(state);
+    });
+    renderSingleSelectGroup(difficultyEl, DIFFICULTY_OPTIONS, state.difficulty, disabled, (id) => {
+      state.difficulty = id; rerender(); onChange(state);
+    });
+  }
+
+  rerender();
+  return {
+    state,
+    setState(next) { Object.assign(state, next); rerender(); },
+    setDisabled(next) { disabled = next; rerender(); },
+  };
+}
+
+const generatePicker = createPicker({ shapeEl: genShapeGroup, elementEl: genElementGroup, difficultyEl: genDifficultyGroup });
+
 async function runGenerate(template) {
   closePanel(generatePanel);
   btnOpenGenerate.disabled = true;
@@ -381,23 +507,14 @@ async function runGenerate(template) {
   generateStatus.classList.remove('show');
 }
 
-function renderGenerateList() {
-  generateList.innerHTML = '';
-  for (const template of GENERATE_TEMPLATES) {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'puzzle-item';
-    btn.textContent = template.label;
-    btn.addEventListener('click', () => {
-      askConfirm(`'${template.label}' 템플릿으로 새 퍼즐을 생성할까요?<br/>저장된 슬롯이 모두 초기화됩니다.`, () => runGenerate(template));
-    });
-    generateList.appendChild(btn);
-  }
-}
+btnGenerateSubmit.addEventListener('click', () => {
+  const resolved = resolveRandomSelection(generatePicker.state);
+  const template = buildTemplateFromSelection(resolved);
+  askConfirm(`'${template.label}' 조합으로 새 퍼즐을 생성할까요?<br/>저장된 슬롯이 모두 초기화됩니다.`, () => runGenerate(template));
+});
 
 function toggleGeneratePanel() {
   if (generatePanel.classList.contains('show')) { closePanel(generatePanel); return; }
-  renderGenerateList();
   openFloatingPanel(generatePanel);
 }
 
@@ -489,17 +606,11 @@ function prefillNickname(input) {
   input.value = loadSavedNickname();
 }
 
-function populateTemplateSelect(select) {
-  select.innerHTML = '';
-  for (const t of GENERATE_TEMPLATES) {
-    const opt = document.createElement('option');
-    opt.value = t.id;
-    opt.textContent = t.label;
-    select.appendChild(opt);
-  }
-}
-populateTemplateSelect(lcTemplate);
-populateTemplateSelect(wrTemplate);
+const lcPicker = createPicker({ shapeEl: lcShapeGroup, elementEl: lcElementGroup, difficultyEl: lcDifficultyGroup });
+const wrPicker = createPicker({
+  shapeEl: wrShapeGroup, elementEl: wrElementGroup, difficultyEl: wrDifficultyGroup,
+  onChange: (state) => applySettingChange({ templateId: encodeSelectionId(resolveRandomSelection(state)) }),
+});
 
 function showFormError(el, message) {
   el.textContent = message || '';
@@ -629,7 +740,7 @@ btnLcSubmit.addEventListener('click', async () => {
       nickname,
       mode: lcMode,
       maxPlayers: Number(lcMaxPlayers.value),
-      templateId: lcTemplate.value,
+      templateId: encodeSelectionId(resolveRandomSelection(lcPicker.state)),
     });
     enterRoom(result);
   } catch (err) {
@@ -706,7 +817,6 @@ async function applySettingChange(partial) {
 wrModeBattle.addEventListener('click', () => applySettingChange({ mode: 'battle' }));
 wrModeCoop.addEventListener('click', () => applySettingChange({ mode: 'coop' }));
 wrMaxPlayers.addEventListener('change', () => applySettingChange({ maxPlayers: Number(wrMaxPlayers.value) }));
-wrTemplate.addEventListener('change', () => applySettingChange({ templateId: wrTemplate.value }));
 
 btnWrStart.addEventListener('click', async () => {
   if (!mp || !lastRoomState) return;
@@ -715,8 +825,9 @@ btnWrStart.addEventListener('click', async () => {
   try {
     // 배틀/협동 둘 다 시작 시 퍼즐이 필요함 - 방장 브라우저에서 생성해 업로드
     btnWrStart.textContent = '생성 중...';
-    const template = GENERATE_TEMPLATES.find((t) => t.id === lastRoomState.templateId);
-    if (!template) throw new Error('선택된 템플릿을 찾을 수 없어요.');
+    const decoded = decodeSelectionId(lastRoomState.templateId);
+    if (!decoded) throw new Error('선택된 템플릿을 찾을 수 없어요.');
+    const template = buildTemplateFromSelection(decoded);
     const puzzle = await generatePuzzle(template);
     await roomClient.startRoom(mp.code, mp.token, {
       puzzle: { structures: puzzle.structures, givens: puzzle.givens },
@@ -815,8 +926,8 @@ function renderWaitingRoom(room) {
   setModeToggle(wrModeBattle, wrModeCoop, room.mode, { disabled: !isHost });
   wrMaxPlayers.value = room.maxPlayers;
   wrMaxPlayers.disabled = !isHost;
-  wrTemplate.value = room.templateId;
-  wrTemplate.disabled = !isHost;
+  wrPicker.setState(decodeSelectionId(room.templateId) ?? createPickerState());
+  wrPicker.setDisabled(!isHost);
   wrReadonlyNote.hidden = isHost;
 
   const playing = room.status === 'playing';
@@ -1072,6 +1183,11 @@ function renderCoopLeaderboard() {
     const row = document.createElement('div');
     row.className = 'battle-leaderboard-row';
 
+    const dot = document.createElement('span');
+    dot.className = 'player-color-dot';
+    dot.style.background = colorForIndex(p.colorIndex);
+    row.appendChild(dot);
+
     const name = document.createElement('span');
     name.className = 'battle-nickname';
     name.textContent = p.nickname;
@@ -1096,6 +1212,7 @@ function exitCoopUI() {
   renderer.clearRemoteCursors();
   timerDisplay.classList.remove('show');
   coopLeaderboard.classList.add('hidden');
+  btnResetMine.classList.add('hidden');
   setMultiplayerControlsDisabled(false);
   btnOpenSave.disabled = false;
 }
@@ -1133,6 +1250,7 @@ function enterCoopGame(room) {
   coopActive = true;
   timerDisplay.classList.add('show');
   coopLeaderboard.classList.remove('hidden');
+  btnResetMine.classList.remove('hidden');
   renderCoopLeaderboard();
   startCoopTimerLoop();
   startSyncedCountdown(room.playingStartedAt); // 이미 시작 시각이 지났으면 내부에서 알아서 스킵

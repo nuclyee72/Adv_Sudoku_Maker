@@ -14,7 +14,46 @@ import { shuffle, randInt, pick } from './random.js';
 
 function key(row, col) { return `${row},${col}`; }
 
-function buildWalk(board, region, targetLen, reservedKeys) {
+const DIRS = [[0, 1], [0, -1], [1, 0], [-1, 0]];
+
+/**
+ * 후보 칸이 "직전 칸 말고" 이미 지나온 칸과 몇 군데나 붙어있는지 센다 — 높을수록 경로가
+ * 일자로 뻗기보다 제 몸 옆으로 다시 붙어 뭉쳐지는 모양이 된다.
+ */
+function clusterBonus(row, col, fromRow, fromCol, visited) {
+  let bonus = 0;
+  for (const [dr, dc] of DIRS) {
+    const nr = row + dr, nc = col + dc;
+    if (nr === fromRow && nc === fromCol) continue;
+    if (visited.has(key(nr, nc))) bonus++;
+  }
+  return bonus;
+}
+
+/** 뭉침 점수가 높은 후보일수록 먼저 시도될 확률이 높도록 가중치를 둔 순서로 섞는다. */
+function weightedByCluster(scored) {
+  const pool = [...scored];
+  const ordered = [];
+  while (pool.length) {
+    const total = pool.reduce((sum, p) => sum + p.weight, 0);
+    let r = Math.random() * total;
+    let idx = pool.findIndex(p => (r -= p.weight) <= 0);
+    if (idx === -1) idx = pool.length - 1;
+    ordered.push(pool.splice(idx, 1)[0].cell);
+  }
+  return ordered;
+}
+
+class WalkNodeCapExceeded extends Error {}
+
+/**
+ * 뭉침 편향은 자기 몸 옆으로 자꾸 붙으려다 스스로를 가두는(더 갈 곳이 없어지는) 경우가
+ * 늘어서, 특히 목표 길이가 길거나(어려움) 이미 다른 스네이크가 자리를 많이 차지한
+ * 상태에서는 DFS 백트래킹이 훨씬 깊어질 수 있다 — nodeCap으로 한 시도당 탐색량을
+ * 제한하고, 초과하면 그 시작 칸은 포기하고 pickSnakeWalk의 다음 시도(다른 시작 칸)로
+ * 넘어간다(backtrack.js의 NodeCapExceeded와 같은 패턴).
+ */
+function buildWalk(board, region, targetLen, reservedKeys, nodeCap = 4000) {
   const inRegion = (r, c) =>
     r >= region.row && r < region.row + region.height &&
     c >= region.col && c < region.col + region.width &&
@@ -26,17 +65,25 @@ function buildWalk(board, region, targetLen, reservedKeys) {
   const start = pick(candidates);
   const visited = new Set();
   const path = [];
+  let nodes = 0;
 
   function dfs(cell) {
+    if (++nodes > nodeCap) throw new WalkNodeCapExceeded();
     visited.add(key(cell.row, cell.col));
     path.push(cell);
     if (path.length === targetLen) return true;
 
-    const dirs = shuffle([[0, 1], [0, -1], [1, 0], [-1, 0]]);
-    for (const [dr, dc] of dirs) {
-      const next = board.getCell(cell.row + dr, cell.col + dc);
-      if (!next || !next.isVisible || !inRegion(next.row, next.col)) continue;
-      if (visited.has(key(next.row, next.col))) continue;
+    const scored = [];
+    for (const [dr, dc] of DIRS) {
+      const nr = cell.row + dr, nc = cell.col + dc;
+      const next = board.getCell(nr, nc);
+      if (!next || !next.isVisible || !inRegion(nr, nc) || visited.has(key(nr, nc))) continue;
+      // 뭉침 보너스 1개당 가중치 +2(직선으로 쭉 뻗는 후보는 보너스 0이라 기본 가중치 1만 유지) —
+      // 너무 세게 주면(예전 +4) 스스로를 가두는 막다른 경로를 자주 골라 백트래킹이 폭주한다.
+      scored.push({ cell: next, weight: clusterBonus(nr, nc, cell.row, cell.col, visited) * 2 + 1 });
+    }
+
+    for (const next of weightedByCluster(scored)) {
       if (dfs(next)) return true;
     }
 
@@ -45,7 +92,12 @@ function buildWalk(board, region, targetLen, reservedKeys) {
     return false;
   }
 
-  return dfs(start) ? path : null;
+  try {
+    return dfs(start) ? path : null;
+  } catch (e) {
+    if (e instanceof WalkNodeCapExceeded) return null;
+    throw e;
+  }
 }
 
 function peerConflict(board, cell, value) {

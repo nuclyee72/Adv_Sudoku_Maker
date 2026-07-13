@@ -41,8 +41,16 @@
           <input id="lc-max-players" class="landing-input" type="number" min="2" max="10" value="4"/>
         </div>
         <div class="landing-field">
-          <label for="lc-template">퍼즐 템플릿</label>
-          <select id="lc-template" class="landing-select"></select>
+          <label>모양</label>
+          <div id="lc-shape-group" class="mode-toggle wrap"></div>
+        </div>
+        <div class="landing-field">
+          <label>요소</label>
+          <div id="lc-element-group" class="mode-toggle wrap"></div>
+        </div>
+        <div class="landing-field">
+          <label>난이도</label>
+          <div id="lc-difficulty-group" class="mode-toggle"></div>
         </div>
         <p id="lc-error" class="landing-error"></p>
         <button id="btn-lc-submit" class="landing-btn landing-btn-primary" type="button">방 생성</button>
@@ -93,15 +101,23 @@
             <input id="wr-max-players" class="landing-input" type="number" min="2" max="10"/>
           </div>
           <div class="landing-field">
-            <label for="wr-template">퍼즐 템플릿</label>
-            <select id="wr-template" class="landing-select"></select>
+            <label>모양</label>
+            <div id="wr-shape-group" class="mode-toggle wrap"></div>
+          </div>
+          <div class="landing-field">
+            <label>요소</label>
+            <div id="wr-element-group" class="mode-toggle wrap"></div>
+          </div>
+          <div class="landing-field">
+            <label>난이도</label>
+            <div id="wr-difficulty-group" class="mode-toggle"></div>
           </div>
           <p id="wr-readonly-note" class="wr-readonly-note" hidden>방장만 설정을 바꿀 수 있어요</p>
         </div>
       </div>
 
       <div id="wr-starting" class="wr-starting" hidden>
-        <p class="landing-placeholder-text">게임이 곧 시작됩니다! 배틀/협동 실제 플레이는 다음 업데이트에서 이어집니다 🚧</p>
+        <p class="landing-placeholder-text">게임 화면으로 이동 중입니다...</p>
       </div>
 
       <p id="wr-error" class="landing-error"></p>
@@ -185,6 +201,7 @@
         <div id="timer-display" class="timer-display">00:00.00</div>
         <div id="keypad-grid" class="kp-grid"></div>
         <div class="kp-sep"></div>
+        <button id="btn-reset-mine" class="kp-reset-all hidden" type="button">내가 쓴 것 모두 지우기</button>
         <button id="btn-reset-all" class="kp-reset-all" type="button">모두 지우기</button>
       </div>
     </div>
@@ -245,7 +262,21 @@
   <div id="generate-panel" class="floating-panel">
     <button id="generate-close" class="floating-panel-close" type="button" aria-label="닫기">✕</button>
     <h2 class="floating-panel-title">자동 생성</h2>
-    <div id="generate-list" class="puzzle-list"></div>
+    <div class="generate-picker">
+      <div class="landing-field">
+        <label>모양</label>
+        <div id="gen-shape-group" class="mode-toggle wrap"></div>
+      </div>
+      <div class="landing-field">
+        <label>요소</label>
+        <div id="gen-element-group" class="mode-toggle wrap"></div>
+      </div>
+      <div class="landing-field">
+        <label>난이도</label>
+        <div id="gen-difficulty-group" class="mode-toggle"></div>
+      </div>
+      <button id="btn-generate-submit" type="button" class="landing-btn landing-btn-primary">생성하기</button>
+    </div>
   </div>
 
   <!-- 도움말 패널 -->

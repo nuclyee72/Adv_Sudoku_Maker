@@ -193,6 +193,23 @@ html, body {
   opacity: 0.7;
 }
 
+/* 모양/요소처럼 버튼 수가 많아 한 줄에 다 못 들어가는 토글 그룹 */
+.mode-toggle.wrap {
+  flex-wrap: wrap;
+}
+
+.mode-toggle.wrap .mode-toggle-btn {
+  flex: 0 1 auto;
+  height: 36px;
+  padding: 0 12px;
+}
+
+.generate-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
 .landing-error {
   margin: 0;
   min-height: 0;
@@ -520,6 +537,13 @@ html, body {
   white-space: nowrap;
 }
 
+.player-color-dot {
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
 .battle-timer,
 .coop-fill-count {
   flex: 0 0 auto;
@@ -833,6 +857,10 @@ html, body {
 
 .kp-reset-all.pressed {
   transform: scale(0.96);
+}
+
+.kp-reset-all.hidden {
+  display: none;
 }
 
 /* ── 완성 토스트 ── */

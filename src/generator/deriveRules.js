@@ -56,7 +56,7 @@ function readGivenGrid(board, originRow, originCol, size) {
   return grid;
 }
 
-function pickTurntableOrigin(board, rule) {
+function pickTurntableOrigin(board, rule, reservedKeys) {
   const size = rule.size;
   const { row, col, height, width } = rule.region;
   const candidates = [];
@@ -66,7 +66,7 @@ function pickTurntableOrigin(board, rule) {
       for (let dr = 0; dr < size && allVisible; dr++) {
         for (let dc = 0; dc < size && allVisible; dc++) {
           const cell = board.getCell(r + dr, c + dc);
-          if (!cell || !cell.isVisible) allVisible = false;
+          if (!cell || !cell.isVisible || reservedKeys.has(`${r + dr},${c + dc}`)) allVisible = false;
         }
       }
       if (allVisible) candidates.push({ row: r, col: c });
@@ -78,14 +78,21 @@ function pickTurntableOrigin(board, rule) {
 /**
  * turntable 규칙들의 배치를 가장 먼저 정한다(값과 무관한 순수 기하 문제라, snake 경로를 뽑기
  * 전에 확정해야 snake가 turntable 칸을 침범하지 않도록 피할 수 있다). 실패 시 null.
+ * 턴테이블이 여러 개면(보드가 여럿인 모양 + 요소 개수가 난이도에 비례해 늘어난 경우)
+ * 서로 다른 보드에 하나씩 배치돼도 두 보드가 3x3 모서리를 공유할 수 있어, 이미 놓은
+ * 턴테이블의 칸을 reservedKeys로 누적해서 다음 턴테이블이 그 자리를 피하게 한다.
  * 반환: [{ rule, originRow, originCol, size, scrambleSteps }]
  */
 export function pickTurntableOrigins(board, rules) {
   const result = [];
+  const reservedKeys = new Set();
   for (const rule of rules) {
     if (rule.type !== 'turntable') continue;
-    const origin = pickTurntableOrigin(board, rule);
+    const origin = pickTurntableOrigin(board, rule, reservedKeys);
     if (!origin) return null;
+    for (let r = 0; r < rule.size; r++)
+      for (let c = 0; c < rule.size; c++)
+        reservedKeys.add(`${origin.row + r},${origin.col + c}`);
     result.push({
       rule,
       originRow: origin.row,
@@ -111,6 +118,9 @@ function turntableReservedKeys(turntableOrigins) {
  * snake 규칙들의 경로/값을 해 채우기 전에 먼저 확정한다. turntable 칸(reservedKeys)은
  * 지나갈 수 없다 — 같은 칸이 "항상 given + 회전 미지수"와 "값을 추리하는 일반 칸"을
  * 동시에 만족할 수 없기 때문. 실패하면 null(호출 쪽에서 전체 재시도).
+ * 스네이크가 여러 개일 때(보드가 여럿인 모양에서 난이도에 비례해 개수가 늘어난 경우)도
+ * 서로 다른 보드에 하나씩 배치되지만 두 보드가 모서리를 공유할 수 있어, 먼저 뽑은 경로의
+ * 칸을 reservedKeys에 누적해서 다음 스네이크가 그 칸을 다시 지나가지 않게 한다.
  */
 export function prefillSnakeWalks(board, rules, reservedKeys = new Set()) {
   const walks = [];
@@ -118,6 +128,7 @@ export function prefillSnakeWalks(board, rules, reservedKeys = new Set()) {
     if (rule.type !== 'snake') continue;
     const walk = pickSnakeWalk(board, rule.region, rule.length ?? [4, 7], 40, reservedKeys);
     if (!walk) return null;
+    for (const cell of walk.cells) reservedKeys.add(`${cell.row},${cell.col}`);
     walks.push({ rule, walk });
   }
   return walks;

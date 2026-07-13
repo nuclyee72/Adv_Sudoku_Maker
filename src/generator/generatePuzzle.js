@@ -11,8 +11,11 @@ import {
   prefillSnakeWalks, deriveRuleStructures, scrambledTurntableGrid,
 } from './deriveRules.js';
 import { carveGivens } from './carveGivens.js';
+import { relaxTurntableAmbiguity } from './turntableAmbiguity.js';
+import { shuffle } from './random.js';
 
 const MAX_ATTEMPTS = 8;
+const EASY_RESTORE_RATIO = 0.35; // "쉬움" 난이도: 지운 칸 중 이 비율만큼 다시 given으로 복원
 
 async function tryGenerate(template) {
   const board = new Board();
@@ -37,7 +40,26 @@ async function tryGenerate(template) {
   const { structures: ruleStructures, turntables } = deriveRuleStructures(board, rules, snakeWalks, turntableOrigins);
   board.addStructures(ruleStructures);
 
-  await carveGivens(board, { turntableRegions: turntables });
+  const difficulty = template.difficulty ?? 'normal';
+  const carveOptions = difficulty === 'hard'
+    // "어려움"은 naked/hidden single 게이트를 끄기 때문에 매 후보가 비싼 유일해 검사까지
+    // 가는데, 클루가 줄수록 그 검사 자체가 기하급수적으로 비싸진다 — nodeCap을 줄이고
+    // 전체 캐빙에 시간 예산을 둬서 그 폭주를 막는다(예산 초과분은 안전하게 given으로 남음).
+    ? { turntableRegions: turntables, requireLogicSolvable: false, nodeCap: 20000, timeBudgetMs: 4000 }
+    : { turntableRegions: turntables, requireLogicSolvable: true };
+  const { removedCells } = await carveGivens(board, carveOptions);
+
+  if (difficulty === 'easy') {
+    const restoreCount = Math.round(removedCells.length * EASY_RESTORE_RATIO);
+    for (const { cell, value } of shuffle(removedCells).slice(0, restoreCount)) {
+      cell.isGiven = true;
+      cell.value = value;
+    }
+  }
+
+  // 회전 없이도 정답 방향이 뻔히 보이면(4방향 중 그럴듯한 게 1개뿐이면) 턴테이블이
+  // 장식으로 전락한다 — 난이도와 무관하게 항상 보정한다.
+  await relaxTurntableAmbiguity(board, turntables);
 
   const scrambleByOrigin = new Map(
     turntables.map(t => [`${t.originRow},${t.originCol}`, scrambledTurntableGrid(board, t)])

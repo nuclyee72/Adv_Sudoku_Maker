@@ -79,6 +79,14 @@ function requireWaiting(room) {
   if (room.status !== 'waiting') throw new RoomError(409, '대기 중인 방에서만 가능합니다.');
 }
 
+/** 참가(join) 전용 - 협동은 진행 중인 방에도 도중 참가를 허용한다(다 같이 쓰는 보드라 늦게 들어와도 자연스러움).
+ * 배틀은 개인전 진행 상황이 이미 갈렸으므로 여전히 대기 중일 때만 참가할 수 있다. */
+function requireJoinable(room) {
+  if (room.status === 'waiting') return;
+  if (room.mode === 'coop' && room.status === 'playing') return;
+  throw new RoomError(409, '대기 중인 방에서만 참가할 수 있습니다.');
+}
+
 function serializeCoopCells(room) {
   return room.coopBoard.getVisibleCells().map((c) => ({
     row: c.row,
@@ -170,7 +178,7 @@ export function createRoom({ nickname, mode, maxPlayers, templateId }) {
 
 export function joinRoom(code, nickname) {
   const room = getRoomOrThrow(code);
-  requireWaiting(room);
+  requireJoinable(room);
   if (room.players.size >= room.maxPlayers) throw new RoomError(409, '방 정원이 가득 찼습니다.');
 
   const cleanNickname = validateNickname(nickname);
