@@ -88,6 +88,15 @@ function broadcastCoopRotate(code, result) {
   }
 }
 
+function broadcastCoopAnswerUpdate(code, result) {
+  const sockets = roomSockets.get(code);
+  if (!sockets) return;
+  const payload = JSON.stringify({ type: 'coopAnswerUpdate', cells: result.cells });
+  for (const ws of sockets) {
+    if (ws.readyState === ws.OPEN) ws.send(payload);
+  }
+}
+
 function removeSocket(code, token) {
   const sockets = roomSockets.get(code);
   if (!sockets) return;
@@ -126,7 +135,7 @@ wss.on('connection', (ws, req) => {
 
   ws.send(JSON.stringify({ type: 'roomState', room: state }));
 
-  ws.on('message', (raw) => {
+  ws.on('message', async (raw) => {
     let msg;
     try {
       msg = JSON.parse(raw);
@@ -150,6 +159,14 @@ wss.on('connection', (ws, req) => {
           originRow: msg.originRow, originCol: msg.originCol, steps: msg.steps,
         });
         broadcastCoopRotate(ws.roomCode, result);
+        if (result.solved) broadcastRoomState(ws.roomCode);
+      } else if (msg.type === 'coopAnswerCheck') {
+        const result = await rooms.applyCoopAnswerCheck(ws.roomCode, ws.playerToken);
+        broadcastCoopAnswerUpdate(ws.roomCode, result);
+        if (result.solved) broadcastRoomState(ws.roomCode);
+      } else if (msg.type === 'coopAnswerReveal') {
+        const result = await rooms.applyCoopAnswerReveal(ws.roomCode, ws.playerToken);
+        broadcastCoopAnswerUpdate(ws.roomCode, result);
         if (result.solved) broadcastRoomState(ws.roomCode);
       }
     } catch {

@@ -5,6 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>변형 스도쿠</title>
   <link rel="stylesheet" href="style.css"/>
+  <script>
+    // body가 그려지기 전에 먼저 적용해서 라이트 테마가 잠깐 번쩍이는 걸 막는다
+    try {
+      if (localStorage.getItem('sudoku-dark-mode') === '1') {
+        document.documentElement.setAttribute('data-theme', 'dark');
+      }
+    } catch {}
+  </script>
 </head>
 <body>
 
@@ -46,7 +54,7 @@
         </div>
         <div class="landing-field">
           <label>요소</label>
-          <div id="lc-element-group" class="mode-toggle wrap"></div>
+          <div id="lc-element-group" class="element-slider-group"></div>
         </div>
         <div class="landing-field">
           <label>난이도</label>
@@ -106,7 +114,7 @@
           </div>
           <div class="landing-field">
             <label>요소</label>
-            <div id="wr-element-group" class="mode-toggle wrap"></div>
+            <div id="wr-element-group" class="element-slider-group"></div>
           </div>
           <div class="landing-field">
             <label>난이도</label>
@@ -191,6 +199,16 @@
     </div>
   </div>
 
+  <!-- 답지 패널 - 도움말/저장 패널과 같은 방식의 떠있는 패널 -->
+  <div id="answer-sheet-panel" class="floating-panel">
+    <button id="answer-sheet-close" class="floating-panel-close" type="button" aria-label="닫기">✕</button>
+    <h2 class="floating-panel-title">답지</h2>
+    <div class="answer-sheet-actions">
+      <button id="btn-answer-check" class="answer-sheet-btn" type="button">정답 체크</button>
+      <button id="btn-answer-reveal" class="answer-sheet-btn" type="button">정답 보기</button>
+    </div>
+  </div>
+
   <!-- 숫자 입력 키패드 패널 -->
   <div id="keypad-panel" class="keypad-panel">
     <!-- 토글 탭 + 추가 메뉴: 항상 하나의 단위로 묶여 왼쪽으로 펼쳐짐 (토글은 항상 가장 바깥쪽) -->
@@ -203,8 +221,10 @@
             <button id="btn-open-generate" class="kp-extra-btn" type="button">자동 생성</button>
             <button id="btn-open-save" class="kp-extra-btn" type="button">저장 / 불러오기</button>
             <button id="btn-toggle-timer" class="kp-extra-btn" type="button">타이머</button>
+            <button id="btn-open-answer-sheet" class="kp-extra-btn" type="button">답지</button>
+            <button id="btn-toggle-dark-mode" class="kp-extra-btn" type="button">다크 모드</button>
+            <button id="btn-open-help" class="kp-extra-btn" type="button">도움말</button>
           </div>
-          <button id="btn-open-help" class="kp-extra-btn kp-extra-help" type="button">도움말</button>
           <button id="btn-coop-stop-vote" class="kp-extra-btn kp-extra-vote hidden" type="button">중지 투표</button>
           <button id="btn-go-landing" class="kp-extra-btn kp-extra-home" type="button">메인 화면으로</button>
         </div>
@@ -215,7 +235,10 @@
         <div id="timer-display" class="timer-display">00:00.00</div>
         <div id="keypad-grid" class="kp-grid"></div>
         <div class="kp-sep"></div>
-        <button id="btn-reset-mine" class="kp-reset-all hidden" type="button">내가 쓴 것 모두 지우기</button>
+        <div class="kp-reset-row">
+          <button id="btn-clear-my-notes" class="kp-reset-all kp-reset-half" type="button">내 메모 지우기</button>
+          <button id="btn-reset-mine" class="kp-reset-all kp-reset-half hidden" type="button">내 숫자 지우기</button>
+        </div>
         <button id="btn-reset-all" class="kp-reset-all" type="button">모두 지우기</button>
       </div>
     </div>
@@ -283,7 +306,7 @@
       </div>
       <div class="landing-field">
         <label>요소</label>
-        <div id="gen-element-group" class="mode-toggle wrap"></div>
+        <div id="gen-element-group" class="element-slider-group"></div>
       </div>
       <div class="landing-field">
         <label>난이도</label>

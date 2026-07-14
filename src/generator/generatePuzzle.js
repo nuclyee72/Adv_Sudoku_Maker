@@ -12,6 +12,7 @@ import {
 } from './deriveRules.js';
 import { carveGivens } from './carveGivens.js';
 import { relaxTurntableAmbiguity } from './turntableAmbiguity.js';
+import { restoreRatioFor } from './composeTemplate.js';
 
 const MAX_ATTEMPTS = 20;
 // 보드 개수/규칙이 많은 조합은 시도당 소요 시간 편차가 커서(특히 fillRandomSolution이
@@ -19,7 +20,23 @@ const MAX_ATTEMPTS = 20;
 // 없다 — 전체 생성에 쓸 수 있는 총 시간을 못박아 두고, 그 안에서 될 때까지(또는
 // MAX_ATTEMPTS까지) 재시도한다.
 const GENERATE_TIME_BUDGET_MS = 30000;
-const EASY_RESTORE_RATIO = 0.35; // "쉬움" 난이도: 지운 칸 중 이 비율만큼 다시 given으로 복원
+
+/**
+ * 부등호의 "작은 쪽" 칸이 given으로 1이거나 "큰 쪽" 칸이 given으로 9면, 그 부등호는
+ * row/col 유일성만으로 항상 참이라(같은 행/열엔 같은 숫자가 없으니 나머지 칸은 자동으로
+ * 1보다 크거나 9보다 작음) 아무 정보도 주지 않는 장식성 표시가 된다 — "1<"·"9>" 패턴.
+ * 턴테이블에 걸친 칸은 회전에 따라 표시되는 값/given 여부가 바뀌므로 건드리지 않는다.
+ */
+function isTrivialInequality(board, turntableOf, structure) {
+  const cellA = board.getCell(structure.a.row, structure.a.col);
+  const cellB = board.getCell(structure.b.row, structure.b.col);
+  if (turntableOf(cellA.row, cellA.col) || turntableOf(cellB.row, cellB.col)) return false;
+  const smaller = structure.greater === 'a' ? cellB : cellA;
+  const larger = structure.greater === 'a' ? cellA : cellB;
+  if (smaller.isGiven && smaller.value === 1) return true;
+  if (larger.isGiven && larger.value === 9) return true;
+  return false;
+}
 
 async function tryGenerate(template) {
   const board = new Board();
@@ -44,20 +61,32 @@ async function tryGenerate(template) {
   const { structures: ruleStructures, turntables } = deriveRuleStructures(board, rules, snakeWalks, turntableOrigins);
   board.addStructures(ruleStructures);
 
-  const difficulty = template.difficulty ?? 'normal';
+  // 캐빙(given 제거)으로 값이 지워지기 전, 모든 칸이 아직 "진짜" 정답값을 갖고 있는 지금
+  // 스냅샷을 떠서 정답 체크/보기 기능에 그대로 실어 보낸다. 이후 given이 아닌 칸만 갖고
+  // 다시 풀어내려 하면(특히 턴테이블이 있는 퍼즐) 그 영역이 회전 자유도 때문에 어떤 배치가
+  // "진짜"인지 알 방법이 없어 유일하지 않은 다른 해로 수렴할 수 있다 — 실제로 이 문제가
+  // 재현됨을 확인했다. 턴테이블 칸 자체는 회전 때문에 칸별 정답이 고정되지 않으므로 애초에
+  // 스냅샷에도 담지 않는다(정답 체크/보기가 그 칸들을 대상에서 제외하는 것과 동일한 기준).
+  const turntableSolveKeys = board.getTurntableCellKeys();
+  const solution = [];
+  for (const cell of board.getVisibleCells()) {
+    if (turntableSolveKeys.has(`${cell.row},${cell.col}`)) continue;
+    solution.push({ row: cell.row, col: cell.col, value: cell.value });
+  }
+
+  const difficulty = template.difficulty ?? 3;
   const { removedCells } = await carveGivens(board, { turntableRegions: turntables, requireLogicSolvable: true });
 
-  if (difficulty === 'easy') {
-    // 무작위 대신 "가장 나중에 지워진" 칸부터 되돌린다 — removedCells는 캐빙 루프가 지운
-    // 순서 그대로 쌓이므로, 뒤쪽일수록 이미 다른 칸이 많이 지워진 빠듯한 상태에서 지워진
-    // 칸(=복구하기 가장 어려운 칸)이다. 무작위 복원은 어려운 지점을 그대로 남겨둘 수 있지만,
-    // 이렇게 하면 실제로 어려운 지점부터 겨냥해서 낮출 수 있다.
-    const restoreCount = Math.round(removedCells.length * EASY_RESTORE_RATIO);
-    if (restoreCount > 0) { // slice(-0)은 slice(0)과 같아서 전체를 복원해버리므로 반드시 방어
-      for (const { cell, value } of removedCells.slice(-restoreCount)) {
-        cell.isGiven = true;
-        cell.value = value;
-      }
+  // 무작위 대신 "가장 나중에 지워진" 칸부터 되돌린다 — removedCells는 캐빙 루프가 지운
+  // 순서 그대로 쌓이므로, 뒤쪽일수록 이미 다른 칸이 많이 지워진 빠듯한 상태에서 지워진
+  // 칸(=복구하기 가장 어려운 칸)이다. 무작위 복원은 어려운 지점을 그대로 남겨둘 수 있지만,
+  // 이렇게 하면 실제로 어려운 지점부터 겨냥해서 낮출 수 있다. 난이도가 높을수록(5=예전
+  // "보통") restoreRatioFor가 0에 가까워져 사실상 복원이 없어진다.
+  const restoreCount = Math.round(removedCells.length * restoreRatioFor(difficulty));
+  if (restoreCount > 0) { // slice(-0)은 slice(0)과 같아서 전체를 복원해버리므로 반드시 방어
+    for (const { cell, value } of removedCells.slice(-restoreCount)) {
+      cell.isGiven = true;
+      cell.value = value;
     }
   }
 
@@ -70,6 +99,12 @@ async function tryGenerate(template) {
   );
   const turntableOf = (row, col) => turntables.find(t =>
     row >= t.originRow && row < t.originRow + t.size && col >= t.originCol && col < t.originCol + t.size);
+
+  // given으로 드러난 1/9 옆의 정보 없는 부등호("1<"·"9>")는 제거한다 — 지워도 남은 given
+  // 숫자 자체가 안 바뀌므로 유일해 여부에는 영향이 없다(부등호가 강제하던 조건이 애초에
+  // row/col 유일성만으로 항상 성립했던 것뿐이라 재검증이 필요 없음).
+  board.structures = board.structures.filter((s) =>
+    s.type !== 'inequality' || !isTrivialInequality(board, turntableOf, s));
 
   const givens = [];
   for (const cell of board.getVisibleCells()) {
@@ -92,6 +127,7 @@ async function tryGenerate(template) {
     name: template.label,
     structures: board.structures,
     givens,
+    solution, // [{row,col,value}], 턴테이블 칸 제외 - 정답 체크/보기 기능이 그대로 사용
     // 난이도를 "라벨"이 아니라 측정된 값으로도 남겨둔다(지금은 UI에 안 쓰지만 추후 조정/표시에 재사용 가능)
     stats: { givenCount: givens.length, totalCells: board.getVisibleCells().length },
   };

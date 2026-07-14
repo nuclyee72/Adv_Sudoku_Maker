@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { Board } from '../src/core/Board.js';
 import { Validator } from '../src/core/Validator.js';
 import { reviveStructures } from '../src/puzzles/reviveStructures.js';
+import { solveBoard } from '../src/generator/solveBoard.js';
 
 const MODES = new Set(['battle', 'coop']);
 const MIN_PLAYERS = 2;
@@ -261,6 +262,7 @@ export function startRoom(code, token, { puzzle } = {}) {
     board.addStructures(reviveStructures(room.puzzle.structures));
     board.loadGivens(room.puzzle.givens);
     room.coopBoard = board;
+    room.coopSolution = undefined; // 새 퍼즐이므로 이전 라운드의 캐시된 정답을 반드시 무효화
   }
 
   // 전원이 같은 순간에 시작하도록, "지금부터 카운트다운" 대신 미래의 한 시점을 공유 기준으로 잡는다
@@ -315,6 +317,7 @@ function resetRoomToWaiting(room) {
   room.playingStartedAt = null;
   room.endedAt = null;
   room.coopBoard = undefined;
+  room.coopSolution = undefined;
   room.coopVote = null;
   for (const p of room.players.values()) {
     p.gameStatus = null;
@@ -427,6 +430,95 @@ export function applyCoopRotate(code, token, { originRow, originCol, steps }) {
     return { row, col, value: cell.value, isGiven: cell.isGiven, filledBy: cell.filledBy ?? null };
   });
   return { originRow, originCol, cells, solved };
+}
+
+function turntableCellKeys(board) {
+  const keys = new Set();
+  for (const s of board.structures) {
+    if (s.type !== 'turntable') continue;
+    for (const { row, col } of s.coords) keys.add(`${row},${col}`);
+  }
+  return keys;
+}
+
+/** room.coopSolution을 처음 필요할 때 한 번만 준비해 캐싱한다(라운드당 1회, startRoom/
+ * resetRoomToWaiting에서 무효화됨). 실패(모순 등)하면 null. */
+async function ensureCoopSolution(room) {
+  if (room.coopSolution) return room.coopSolution;
+
+  // generatePuzzle()이 캐빙 전에 뜬 정답 스냅샷을 함께 보냈으면(멀티플레이는 항상 이 경로)
+  // 그대로 쓴다 - 재계산이 필요 없고, 턴테이블 자유도로 인한 오답 위험도 없다.
+  if (Array.isArray(room.puzzle.solution)) {
+    const solution = new Map(room.puzzle.solution.map((s) => [`${s.row},${s.col}`, s.value]));
+    room.coopSolution = solution;
+    return solution;
+  }
+
+  // solution을 못 받은 경우에만 최선 노력으로 다시 풀어본다 - solveBoard는 구조체의
+  // validate()를 호출하므로 JSON으로 받은 plain structures를 revive해서 넘겨야 한다.
+  const solution = await solveBoard(reviveStructures(room.puzzle.structures), room.puzzle.givens);
+  if (!solution) return null;
+  room.coopSolution = solution;
+  return solution;
+}
+
+/**
+ * 협동 모드 정답 체크 - 현재 입력된 값이 정답과 일치하는 칸을 given으로 고정한다.
+ * 값은 원래도 정답이었으므로 바꾸지 않는다. 턴테이블 영역은 회전 때문에 칸별 정답이
+ * 고정되지 않아 제외한다.
+ * @returns {{ cells: Array, solved: boolean }}
+ */
+export async function applyCoopAnswerCheck(code, token) {
+  const room = getRoomOrThrow(code);
+  getPlayerOrThrow(room, token);
+  requireCoopPlaying(room);
+
+  const solution = await ensureCoopSolution(room);
+  if (!solution) throw new RoomError(500, '정답을 계산하지 못했습니다.');
+
+  const board = room.coopBoard;
+  const skip = turntableCellKeys(board);
+  const cells = [];
+  for (const cell of board.getVisibleCells()) {
+    const k = `${cell.row},${cell.col}`;
+    if (cell.isGiven || cell.value === null || skip.has(k)) continue;
+    if (solution.get(k) !== cell.value) continue;
+    cell.isGiven = true;
+    cell.filledBy = null;
+    cells.push({ row: cell.row, col: cell.col, value: cell.value, isGiven: true });
+  }
+
+  const solved = finalizeCoopMove(room);
+  return { cells, solved };
+}
+
+/**
+ * 협동 모드 정답 보기 - given이 아닌 칸(턴테이블 영역 제외)을 전부 정답값으로 채운다.
+ * "체크"와 달리 given으로 고정하지 않는다 - 직접 입력한 값과 같은 형식(계속 수정 가능,
+ * 특정 참가자가 채운 것으로 표시되지 않음)으로 채워 넣는다는 요청에 따른 것이다.
+ * @returns {{ cells: Array, solved: boolean }}
+ */
+export async function applyCoopAnswerReveal(code, token) {
+  const room = getRoomOrThrow(code);
+  getPlayerOrThrow(room, token);
+  requireCoopPlaying(room);
+
+  const solution = await ensureCoopSolution(room);
+  if (!solution) throw new RoomError(500, '정답을 계산하지 못했습니다.');
+
+  const board = room.coopBoard;
+  const skip = turntableCellKeys(board);
+  const cells = [];
+  for (const cell of board.getVisibleCells()) {
+    const k = `${cell.row},${cell.col}`;
+    if (cell.isGiven || skip.has(k) || !solution.has(k)) continue;
+    cell.value = solution.get(k);
+    cell.filledBy = null; // 특정 참가자가 채운 것처럼 보이지 않도록(모서리 색 없음)
+    cells.push({ row: cell.row, col: cell.col, value: cell.value, isGiven: false });
+  }
+
+  const solved = finalizeCoopMove(room);
+  return { cells, solved };
 }
 
 /**

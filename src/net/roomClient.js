@@ -69,7 +69,7 @@ export function coopLoad(code, token, { cells }) {
  * 방 상태 push를 받는 WebSocket 연결.
  * @returns {WebSocket} 호출측이 필요시 .close()로 명시적으로 나갈 수 있도록 소켓 인스턴스 반환
  */
-export function connectSocket(code, token, { onState, onClose, onCoopCellUpdate, onCoopCursor, onCoopRotate } = {}) {
+export function connectSocket(code, token, { onState, onClose, onCoopCellUpdate, onCoopCursor, onCoopRotate, onCoopAnswerUpdate } = {}) {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   const socket = new WebSocket(`${proto}//${location.host}/ws?code=${code}&token=${token}`);
 
@@ -84,6 +84,7 @@ export function connectSocket(code, token, { onState, onClose, onCoopCellUpdate,
     else if (msg.type === 'coopCellUpdate' && onCoopCellUpdate) onCoopCellUpdate(msg);
     else if (msg.type === 'coopCursor' && onCoopCursor) onCoopCursor(msg);
     else if (msg.type === 'coopRotate' && onCoopRotate) onCoopRotate(msg);
+    else if (msg.type === 'coopAnswerUpdate' && onCoopAnswerUpdate) onCoopAnswerUpdate(msg);
   });
 
   socket.addEventListener('close', () => {
@@ -109,4 +110,16 @@ export function sendCoopCursor(socket, { row, col }) {
 export function sendCoopRotate(socket, { originRow, originCol, steps }) {
   if (!socket || socket.readyState !== WebSocket.OPEN) return;
   socket.send(JSON.stringify({ type: 'coopRotate', originRow, originCol, steps }));
+}
+
+/** 협동 모드 정답 체크 요청 (서버가 정답을 계산해 일치하는 칸을 고정한 후 전원에게 브로드캐스트) */
+export function sendCoopAnswerCheck(socket) {
+  if (!socket || socket.readyState !== WebSocket.OPEN) return;
+  socket.send(JSON.stringify({ type: 'coopAnswerCheck' }));
+}
+
+/** 협동 모드 정답 보기 요청 (서버가 남은 칸을 정답으로 채운 후 전원에게 브로드캐스트) */
+export function sendCoopAnswerReveal(socket) {
+  if (!socket || socket.readyState !== WebSocket.OPEN) return;
+  socket.send(JSON.stringify({ type: 'coopAnswerReveal' }));
 }

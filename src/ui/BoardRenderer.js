@@ -69,8 +69,6 @@ export class BoardRenderer {
     this._remoteCursors = new Map(); // playerId → {rect}(협동 모드 전용)
 
     this._gConflicts    = this._g('g-conflicts');
-    this._gSnakeOutline = null; // _updateSnakePaths()에서 처음 그릴 때 새로 생성됨
-    this._gSnakePath    = null; // 〃
     this._gTurntableUI       = null; // 턴테이블 손잡이 — 칸 클릭 시 처음 그릴 때 새로 생성됨
     this._turntableUIStructure = null;
 
@@ -82,19 +80,33 @@ export class BoardRenderer {
     this._drawGridBorders();
     this._drawTurntableRings();
 
-    // 에러 테두리 → 부등호/연속 표시 순으로 위에 쌓이도록 삽입
     this.svg.appendChild(this._gConflicts);
+
+    // 스네이크 테두리를 부등호/연속보다 먼저(=아래) 쌓는다 — 겹칠 때 부등호/연속 표시가
+    // 위로 보이도록. _updateSnakePaths()는 아래서 미리 만들어둔 빈 그룹을 그대로
+    // 채우기만 하므로(내부의 lazy-생성 분기는 안전망으로 남겨둠) 자리부터 잡아둔다.
+    this._gSnakeOutline = this._g('g-snake-outline');
+    this.svg.appendChild(this._gSnakeOutline);
+    this._gSnakePath = this._g('g-snake-path');
+    this.svg.appendChild(this._gSnakePath);
+
+    // 에러 테두리 → 스네이크 → 부등호/연속 표시 순으로 위에 쌓이도록 삽입
     this._drawInequalities();
     this._drawConsecutives();
 
     Validator.validate(this.board);
     this._updateAll();
 
+    // 원격 커서 닉네임 태그 — 메모(후보 숫자)에 가려져도 무방하므로 메모보다 먼저(아래) 둔다
+    this._gRemoteCursorLabels = this._g('g-remote-cursor-labels');
+    this._gRemoteCursorLabels.setAttribute('pointer-events', 'none');
+    this.svg.appendChild(this._gRemoteCursorLabels);
+
     // 메모(후보 숫자) 레이어 — 스네이크 시작점 표시 등 다른 장식에 가려지지 않도록
-    // 맨 마지막(원격 커서 바로 아래)에 둔다
+    // 맨 마지막 쪽(원격 커서 선택 테두리 바로 아래)에 둔다
     this.svg.appendChild(this._gCellsNotes);
 
-    // 원격 커서 레이어 — 항상 맨 위(가장 나중에 append)에 그려지도록 마지막에 추가
+    // 원격 커서 선택 테두리 — 항상 맨 위(가장 나중에 append)에 그려지도록 마지막에 추가
     this._gRemoteCursors = this._g('g-remote-cursors');
     this._gRemoteCursors.setAttribute('pointer-events', 'none');
     this.svg.appendChild(this._gRemoteCursors);
@@ -820,7 +832,6 @@ export class BoardRenderer {
     const prevValue = cell.value;
     const prevCandidates = [...cell.candidates];
     this.board.setValue(row, col, value);
-    cell.candidates.clear();
     this._pushUndo([{ row, col, prevValue, prevCandidates }]);
     Validator.validate(this.board);
     this.selectCell(row, col);
@@ -843,7 +854,9 @@ export class BoardRenderer {
     if (!cell || cell.isGiven) return;
 
     cell.value = value;
-    cell.candidates.clear();
+    // 지우기(value가 null로 확정된 경우)는 로컬 지우기와 동일하게 메모도 함께 비운다 —
+    // 숫자가 채워지는 경우(내 입력이든 다른 플레이어든)는 메모를 그대로 둔다.
+    if (value === null) cell.candidates.clear();
     const key = `${row},${col}`;
     if (color) this._filledBy.set(key, color);
     else this._filledBy.delete(key);
@@ -898,6 +911,32 @@ export class BoardRenderer {
   }
 
   /**
+   * 협동 모드 — 서버가 정답 체크/보기로 확정한 칸들(값 + given 여부)을 한 번에 반영한다.
+   * 원격 반영이라 undo 스택에는 쌓지 않는다. 고정된 칸은 given처럼 보여야 하므로
+   * "채운사람" 색 표시도 함께 지운다.
+   */
+  applyRemoteAnswerUpdate(cells) {
+    for (const { row, col, value, isGiven } of cells) {
+      const cell = this.board.getCell(row, col);
+      if (!cell) continue;
+      cell.value = value;
+      cell.isGiven = isGiven;
+      this._filledBy.delete(`${row},${col}`);
+    }
+
+    Validator.validate(this.board);
+    if (this.selectedCell) this.selectCell(this.selectedCell.row, this.selectedCell.col);
+    else this._updateAll();
+
+    if (this.board.isSolved()) {
+      setTimeout(() => {
+        this._celebrate();
+        document.dispatchEvent(new CustomEvent('sudoku:solved'));
+      }, 80);
+    }
+  }
+
+  /**
    * 협동 모드 진입/재접속 시, 그리고 진행 중 서버 스냅샷이 다시 올 때마다(참가자 목록 변경 등
    * 값과 무관한 push 포함) 호출된다. 값이 실제로 안 바뀐 칸은 아예 건드리지 않는데, 그렇지
    * 않으면 매번 로컬 메모(협동에서 로컬 전용)까지 지워버려서 관계없는 push에도 다같이 채워둔
@@ -908,7 +947,7 @@ export class BoardRenderer {
       const cell = this.board.getCell(row, col);
       if (!cell || cell.isGiven || cell.value === value) continue;
       cell.value = value;
-      cell.candidates.clear();
+      if (value === null) cell.candidates.clear(); // 지우기로 반영된 경우만 메모도 함께 비운다
       const key = `${row},${col}`;
       if (color) this._filledBy.set(key, color);
       else this._filledBy.delete(key);
@@ -930,11 +969,12 @@ export class BoardRenderer {
       rect.setAttribute('stroke-width', '3');
       this._gRemoteCursors.appendChild(rect);
 
-      // 닉네임 태그: 밑에 깔리는 배경 알약 모양 + 그 위 흰 글씨 (아래에 뭐가 있어도 읽히도록)
+      // 닉네임 태그: 밑에 깔리는 배경 알약 모양 + 그 위 흰 글씨. 메모(후보 숫자)보다
+      // 아래 레이어에 그려서, 칸에 메모가 있으면 그 위로 닉네임 태그가 덮이지 않게 한다.
       const labelBg = this._el('rect');
       labelBg.setAttribute('rx', '3');
       labelBg.setAttribute('pointer-events', 'none');
-      this._gRemoteCursors.appendChild(labelBg);
+      this._gRemoteCursorLabels.appendChild(labelBg);
 
       const labelText = this._el('text');
       labelText.setAttribute('text-anchor', 'middle');
@@ -944,7 +984,7 @@ export class BoardRenderer {
       labelText.setAttribute('font-weight', '600');
       labelText.setAttribute('fill', '#ffffff');
       labelText.setAttribute('pointer-events', 'none');
-      this._gRemoteCursors.appendChild(labelText);
+      this._gRemoteCursorLabels.appendChild(labelText);
 
       entry = { rect, labelBg, labelText };
       this._remoteCursors.set(playerId, entry);
@@ -1011,6 +1051,78 @@ export class BoardRenderer {
     if (this.onCellSelect && this.selectedCell) {
       this.onCellSelect(this.selectedCell.row, this.selectedCell.col);
     }
+  }
+
+  /**
+   * 값은 그대로 두고 메모(후보 숫자)만 전부 지운다. 메모는 서버가 모르는 로컬 전용
+   * 값이라 협동 모드에서도 서버에 알릴 게 없다 — 숫자 입력과 달리 되돌리기 스택에도
+   * 쌓지 않는다(가벼운 정리용 동작이라 undo 대상으로 취급하지 않음).
+   */
+  clearAllNotes() {
+    let changed = false;
+    for (const cell of this.board.getVisibleCells()) {
+      if (cell.candidates.size === 0) continue;
+      cell.candidates.clear();
+      changed = true;
+    }
+    if (!changed) return;
+    if (this.selectedCell) this.selectCell(this.selectedCell.row, this.selectedCell.col);
+    else this._updateAll();
+  }
+
+  /**
+   * 정답 체크 — 현재 입력된 값이 정답과 일치하는 칸을 given처럼 고정한다. 값 자체는
+   * 안 바꾸므로(원래도 정답이었으므로) 충돌 표시는 다시 계산할 필요가 없다. 턴테이블
+   * 영역은 회전 때문에 칸별 정답이 고정되지 않아 대상에서 제외한다.
+   * @returns {number} 새로 고정된 칸 수
+   */
+  lockCorrectCells(solution) {
+    const turntableKeys = this.board.getTurntableCellKeys();
+    const changes = [];
+    for (const cell of this.board.getVisibleCells()) {
+      if (cell.isGiven || cell.value === null) continue;
+      const key = `${cell.row},${cell.col}`;
+      if (turntableKeys.has(key) || solution.get(key) !== cell.value) continue;
+      changes.push({ row: cell.row, col: cell.col, prevValue: cell.value, prevCandidates: [...cell.candidates], prevIsGiven: false });
+      cell.isGiven = true;
+    }
+    if (!changes.length) return 0;
+    this._pushUndo(changes);
+    if (this.selectedCell) this.selectCell(this.selectedCell.row, this.selectedCell.col);
+    else this._updateAll();
+    return changes.length;
+  }
+
+  /**
+   * 정답 보기 — given이 아닌 칸(턴테이블 영역 제외)을 전부 정답값으로 채운다. "체크"와
+   * 달리 given으로 고정하지 않는다 — 직접 입력한 값과 똑같은 형식(초록 글씨, 계속 수정
+   * 가능)으로 채워 넣는다는 요청에 따른 것으로, isGiven은 건드리지 않는다.
+   * @returns {number} 새로 채운 칸 수
+   */
+  revealAnswers(solution) {
+    const turntableKeys = this.board.getTurntableCellKeys();
+    const changes = [];
+    for (const cell of this.board.getVisibleCells()) {
+      if (cell.isGiven) continue;
+      const key = `${cell.row},${cell.col}`;
+      if (turntableKeys.has(key)) continue;
+      const value = solution.get(key);
+      if (value === undefined) continue;
+      changes.push({ row: cell.row, col: cell.col, prevValue: cell.value, prevCandidates: [...cell.candidates] });
+      cell.value = value;
+    }
+    if (!changes.length) return 0;
+    this._pushUndo(changes);
+    Validator.validate(this.board);
+    if (this.selectedCell) this.selectCell(this.selectedCell.row, this.selectedCell.col);
+    else this._updateAll();
+    if (this.board.isSolved()) {
+      setTimeout(() => {
+        this._celebrate();
+        document.dispatchEvent(new CustomEvent('sudoku:solved'));
+      }, 80);
+    }
+    return changes.length;
   }
 
   _pushUndo(changes) {

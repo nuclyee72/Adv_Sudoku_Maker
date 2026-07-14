@@ -9,14 +9,96 @@
   --cell-highlighted:   #edf8f0;
   --conflict:          #e53e3e;
   --text-given:        #232733;
+  --text-given-rgb:    35, 39, 51; /* text-given과 같은 색을 rgba()로 다양한 투명도로 쓰기 위한 짝 */
   --text-input:        #2f9e60;
   --text-sel:          #1e6b41;
-  --text-note:         rgba(35, 39, 51, 0.5);
+  --text-note:         rgba(var(--text-given-rgb), 0.5);
   --ineq-mark:         #5c6370;
   --snake-default:     #e0a72c;
   --snake-success:     #2f9e60;
   --turntable-mark:    #2f9e60;
   --turntable-mark-pale: #b6ddc7; /* 십자 기본 상태 - 불투명해서 칸이 하이라이트돼도 색이 안 변함 */
+
+  /* ── 보드 바깥 UI 셸(패널/버튼/배경) 색상 — 다크 모드에서 아래 [data-theme="dark"]가 통째로 덮어씀 ── */
+  --bg-page:            #ffffff;
+  --landing-gradient:   linear-gradient(160deg, #eef4f0, #ffffff 60%);
+  --glass-rgb:          255, 255, 255; /* 반투명 "유리" 패널(kp-toggle, 떠있는 패널 등) 배경/테두리용 */
+  --surface-solid:      #ffffff; /* 완전 불투명 밝은 면(입력창, 드롭다운 메뉴, 키패드 버튼 등) */
+  --surface-solid-hover: #f5f6f8;
+  --surface-1:          #f0f1f4; /* 가장 흔한 연회색 면(버튼/트랙/타이머 등) */
+  --surface-1-hover:    #e6e7ec;
+  --surface-2:          #f7f8fa; /* 목록 행(참가자/리더보드/퍼즐 목록) 배경 */
+  --surface-2-hover:    #eef0f3;
+  --surface-danger:     #fff1f1; /* 지우기류 버튼의 옅은 빨강 면 */
+  --conflict-hover:     #cc3535;
+  --cell-selected-hover: #c3e6d1;
+}
+
+[data-theme="dark"] {
+  --grid-line:        #3a3f4c;
+  --box-line:          #e4e6ea;
+  --cell-bg:           #1c1f27;
+  --cell-given-bg:      #262a35;
+  --cell-selected:      #234534;
+  --cell-highlighted:   #1c3327;
+  --conflict:          #f0655f;
+  --text-given:        #e4e6ea;
+  --text-given-rgb:    228, 230, 234;
+  --text-input:        #4cc47f;
+  --text-sel:          #86e6b3;
+  --text-note:         rgba(var(--text-given-rgb), 0.5);
+  --ineq-mark:         #9aa1ad;
+  --snake-default:     #e0a72c;
+  --snake-success:     #4cc47f;
+  --turntable-mark:    #4cc47f;
+  --turntable-mark-pale: #2d5240;
+
+  --bg-page:            #14161c;
+  --landing-gradient:   linear-gradient(160deg, #182420, #14161c 60%);
+  --glass-rgb:          24, 27, 34;
+  --surface-solid:      #1c1f27;
+  --surface-solid-hover: #262a35;
+  --surface-1:          #262a35;
+  --surface-1-hover:    #303543;
+  --surface-2:          #20232c;
+  --surface-2-hover:    #2a2e3a;
+  --surface-danger:     #3a2226;
+  --conflict-hover:     #ff8177;
+  --cell-selected-hover: #2c5a41;
+}
+
+/* ── 스크롤 가능한 영역들의 스크롤바 — 브라우저 기본(흰색 계열) 대신 테마 색에 맞춰
+   얇고 은은하게 표시한다(다크 모드에서 특히 도드라지던 문제를 해결) ── */
+.kp-extra-scroll,
+.floating-panel,
+.shape-picker-menu {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(var(--text-given-rgb), 0.25) transparent;
+}
+
+.kp-extra-scroll::-webkit-scrollbar,
+.floating-panel::-webkit-scrollbar,
+.shape-picker-menu::-webkit-scrollbar {
+  width: 8px;
+}
+
+.kp-extra-scroll::-webkit-scrollbar-track,
+.floating-panel::-webkit-scrollbar-track,
+.shape-picker-menu::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.kp-extra-scroll::-webkit-scrollbar-thumb,
+.floating-panel::-webkit-scrollbar-thumb,
+.shape-picker-menu::-webkit-scrollbar-thumb {
+  background: rgba(var(--text-given-rgb), 0.25);
+  border-radius: 999px;
+}
+
+.kp-extra-scroll::-webkit-scrollbar-thumb:hover,
+.floating-panel::-webkit-scrollbar-thumb:hover,
+.shape-picker-menu::-webkit-scrollbar-thumb:hover {
+  background: rgba(var(--text-given-rgb), 0.4);
 }
 
 * { box-sizing: border-box; }
@@ -25,7 +107,7 @@ html, body {
   height: 100%;
   margin: 0;
   overflow: hidden;
-  background: #ffffff;
+  background: var(--bg-page);
   font-family: 'Inter', system-ui, sans-serif;
   -webkit-user-select: none;
   user-select: none;
@@ -40,7 +122,7 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(160deg, #eef4f0, #ffffff 60%);
+  background: var(--landing-gradient);
 }
 
 .landing-screen.hidden {
@@ -51,10 +133,10 @@ html, body {
   width: 340px;
   padding: 48px 36px 40px;
   border-radius: 28px;
-  background: rgba(255, 255, 255, 0.75);
+  background: rgba(var(--glass-rgb), 0.75);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
-  border: 1px solid rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(var(--glass-rgb), 0.6);
   box-shadow: 0 24px 60px rgba(20, 24, 40, 0.18);
   text-align: center;
 }
@@ -81,7 +163,7 @@ html, body {
   height: 56px;
   border: none;
   border-radius: 16px;
-  background: #f0f1f4;
+  background: var(--surface-1);
   color: var(--text-given);
   font-family: 'Outfit', 'Inter', sans-serif;
   font-size: 17px;
@@ -92,7 +174,7 @@ html, body {
 }
 
 .landing-btn:hover {
-  background: #e6e7ec;
+  background: var(--surface-1-hover);
   box-shadow: 0 4px 10px rgba(20, 24, 40, 0.14);
 }
 
@@ -113,7 +195,7 @@ html, body {
   margin-top: 6px;
   border: none;
   background: none;
-  color: rgba(35, 39, 51, 0.55);
+  color: rgba(var(--text-given-rgb), 0.55);
   font-family: 'Outfit', 'Inter', sans-serif;
   font-size: 13px;
   font-weight: 600;
@@ -126,7 +208,7 @@ html, body {
 
 .landing-placeholder-text {
   margin: 12px 0 24px;
-  color: rgba(35, 39, 51, 0.7);
+  color: rgba(var(--text-given-rgb), 0.7);
   font-size: 14px;
   line-height: 1.6;
 }
@@ -142,7 +224,7 @@ html, body {
 .landing-field label {
   font-size: 13px;
   font-weight: 600;
-  color: rgba(35, 39, 51, 0.7);
+  color: rgba(var(--text-given-rgb), 0.7);
 }
 
 .landing-input,
@@ -150,9 +232,9 @@ html, body {
   width: 100%;
   height: 44px;
   padding: 0 14px;
-  border: 1px solid rgba(35, 39, 51, 0.12);
+  border: 1px solid rgba(var(--text-given-rgb), 0.12);
   border-radius: 12px;
-  background: #ffffff;
+  background: var(--surface-solid);
   color: var(--text-given);
   font-family: 'Outfit', 'Inter', sans-serif;
   font-size: 15px;
@@ -175,7 +257,7 @@ html, body {
   height: 40px;
   border: none;
   border-radius: 10px;
-  background: #f0f1f4;
+  background: var(--surface-1);
   color: var(--text-given);
   font-family: 'Outfit', 'Inter', sans-serif;
   font-size: 14px;
@@ -205,6 +287,93 @@ html, body {
   padding: 0 12px;
 }
 
+/* ── 요소별 없음/보통/많음 슬라이더 (자동 생성 패널) ──
+   실제 드래그 슬라이더는 아니고, 3칸짜리 트랙 위에서 선택된 칸으로 thumb가 미끄러지듯
+   옮겨가는 세그먼트 컨트롤 — 클릭만으로 조작하지만 시각적으로 슬라이드하는 느낌을 준다. */
+.element-slider-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.element-slider-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.element-slider-label {
+  flex: 0 0 auto;
+  min-width: 58px;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-given);
+}
+
+.element-slider-track {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  max-width: 160px;
+  height: 30px;
+  background: var(--surface-1);
+  border-radius: 9px;
+  padding: 2px;
+}
+
+/* 난이도 슬라이더처럼 옆에 라벨 없이 한 줄 전체를 쓰는 트랙 */
+.element-slider-track.wide {
+  max-width: none;
+  width: 100%;
+}
+
+.element-slider-track.disabled {
+  opacity: 0.6;
+}
+
+.element-slider-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  /* width는 옵션 개수에 맞춰 JS가 인라인으로 지정한다(요소 슬라이더=3칸, 난이도=5칸) */
+  height: 26px;
+  border-radius: 7px;
+  background: var(--text-input);
+  transition: transform 0.18s ease;
+}
+
+.element-slider-opt {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  font-family: 'Outfit', 'Inter', sans-serif;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.25;
+  word-break: keep-all; /* "조금 어려움"처럼 공백 있는 라벨이 글자 중간이 아니라 공백에서만 줄바꿈되게 */
+  color: rgba(var(--text-given-rgb), 0.55);
+  cursor: pointer;
+  border-radius: 7px;
+  transition: color 0.15s ease;
+}
+
+.element-slider-opt.active {
+  color: #ffffff;
+}
+
+.element-slider-opt:disabled {
+  cursor: default;
+}
+
+.element-random-btn {
+  margin-top: 2px;
+}
+
 /* ── 모양 선택 드롭다운(클릭 시 펼쳐지며 보드 배치를 미니어처로 보여줌) ── */
 .shape-picker {
   position: relative;
@@ -220,7 +389,7 @@ html, body {
   padding: 0 12px;
   border: none;
   border-radius: 12px;
-  background: #f0f1f4;
+  background: var(--surface-1);
   color: var(--text-given);
   font-family: 'Outfit', 'Inter', sans-serif;
   font-size: 14px;
@@ -230,7 +399,7 @@ html, body {
 }
 
 .shape-picker-trigger:hover {
-  background: #e6e7ec;
+  background: var(--surface-1-hover);
 }
 
 .shape-picker-trigger:disabled {
@@ -246,7 +415,7 @@ html, body {
 .shape-picker-arrow {
   flex: 0 0 auto;
   font-size: 11px;
-  color: rgba(35, 39, 51, 0.5);
+  color: rgba(var(--text-given-rgb), 0.5);
   transition: transform 0.15s ease;
 }
 
@@ -266,9 +435,9 @@ html, body {
   max-height: 220px;
   overflow-y: auto;
   padding: 10px;
-  background: #ffffff;
+  background: var(--surface-solid);
   border-radius: 12px;
-  border: 1px solid rgba(35, 39, 51, 0.1);
+  border: 1px solid rgba(var(--text-given-rgb), 0.1);
   box-shadow: 0 12px 28px rgba(20, 24, 40, 0.18);
 }
 
@@ -296,7 +465,7 @@ html, body {
 }
 
 .shape-option:hover {
-  background: #f0f1f4;
+  background: var(--surface-1);
 }
 
 .shape-option.active {
@@ -378,7 +547,7 @@ html, body {
 
 .wr-code-label {
   font-size: 13px;
-  color: rgba(35, 39, 51, 0.6);
+  color: rgba(var(--text-given-rgb), 0.6);
 }
 
 .wr-code {
@@ -394,7 +563,7 @@ html, body {
   padding: 0 12px;
   border: none;
   border-radius: 8px;
-  background: #f0f1f4;
+  background: var(--surface-1);
   color: var(--text-given);
   font-family: 'Outfit', 'Inter', sans-serif;
   font-size: 12px;
@@ -404,7 +573,7 @@ html, body {
 }
 
 .wr-copy-btn:hover {
-  background: #e6e7ec;
+  background: var(--surface-1-hover);
 }
 
 .wr-copy-btn:active {
@@ -447,7 +616,7 @@ html, body {
   height: 40px;
   padding: 0 12px;
   border-radius: 10px;
-  background: #f7f8fa;
+  background: var(--surface-2);
   font-size: 14px;
   font-weight: 600;
   color: var(--text-given);
@@ -477,13 +646,13 @@ html, body {
   border: none;
   border-radius: 6px;
   background: transparent;
-  color: rgba(35, 39, 51, 0.5);
+  color: rgba(var(--text-given-rgb), 0.5);
   font-size: 13px;
   cursor: pointer;
 }
 
 .wr-nickname-edit-btn:hover {
-  background: #eef0f3;
+  background: var(--surface-2-hover);
   color: var(--text-given);
 }
 
@@ -501,7 +670,7 @@ html, body {
 .wr-readonly-note {
   margin: 4px 0 0;
   font-size: 12px;
-  color: rgba(35, 39, 51, 0.5);
+  color: rgba(var(--text-given-rgb), 0.5);
 }
 
 .wr-starting {
@@ -523,7 +692,7 @@ html, body {
 .wr-waiting-note {
   margin: 0;
   font-size: 13px;
-  color: rgba(35, 39, 51, 0.6);
+  color: rgba(var(--text-given-rgb), 0.6);
 }
 
 /* ── 게임 화면 (보드 + 키패드 + 각종 패널을 감싸는 컨테이너) ── */
@@ -621,10 +790,10 @@ html, body {
   width: 220px;
   padding: 16px;
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.75);
+  background: rgba(var(--glass-rgb), 0.75);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
-  border: 1px solid rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(var(--glass-rgb), 0.6);
   box-shadow: 0 12px 40px rgba(20, 24, 40, 0.14);
 }
 
@@ -639,9 +808,9 @@ html, body {
   gap: 6px;
   margin-bottom: 12px;
   padding-bottom: 12px;
-  border-bottom: 1px solid rgba(35, 39, 51, 0.1);
+  border-bottom: 1px solid rgba(var(--text-given-rgb), 0.1);
   font-size: 12px;
-  color: rgba(35, 39, 51, 0.6);
+  color: rgba(var(--text-given-rgb), 0.6);
 }
 
 .leaderboard-room-code strong {
@@ -665,7 +834,7 @@ html, body {
   height: 36px;
   padding: 0 10px;
   border-radius: 10px;
-  background: #f7f8fa;
+  background: var(--surface-2);
   font-size: 13px;
   font-weight: 600;
   color: var(--text-given);
@@ -794,10 +963,10 @@ html, body {
   width: 26px;
   border: none;
   border-radius: 14px 0 0 14px;
-  background: rgba(255, 255, 255, 0.65);
+  background: rgba(var(--glass-rgb), 0.65);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
-  border: 1px solid rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(var(--glass-rgb), 0.6);
   border-right: none;
   box-shadow: -6px 0 24px rgba(20, 24, 40, 0.1);
   color: var(--text-given);
@@ -806,18 +975,18 @@ html, body {
 }
 
 .kp-toggle:hover {
-  background: rgba(255, 255, 255, 0.85);
+  background: rgba(var(--glass-rgb), 0.85);
 }
 
 .kp-extra-menu {
   flex: 0 0 auto;
   width: 0;
   overflow: hidden;
-  background: rgba(255, 255, 255, 0.65);
+  background: rgba(var(--glass-rgb), 0.65);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
-  border-top: 1px solid rgba(255, 255, 255, 0.6);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.6);
+  border-top: 1px solid rgba(var(--glass-rgb), 0.6);
+  border-bottom: 1px solid rgba(var(--glass-rgb), 0.6);
   box-shadow: 0 12px 40px rgba(20, 24, 40, 0.14);
   opacity: 0;
   transition: width 0.25s ease, opacity 0.2s ease;
@@ -845,11 +1014,6 @@ html, body {
   padding: 16px 16px 8px;
 }
 
-.kp-extra-help {
-  flex: 0 0 auto;
-  margin: 8px 16px 0;
-}
-
 .kp-extra-home {
   flex: 0 0 auto;
   margin: 8px 16px 16px;
@@ -865,7 +1029,7 @@ html, body {
   flex: 0 0 auto;
   border: none;
   border-radius: 10px;
-  background: #ffffff;
+  background: var(--surface-solid);
   color: var(--text-given);
   font-family: 'Outfit', 'Inter', sans-serif;
   font-size: 13px;
@@ -877,7 +1041,7 @@ html, body {
 }
 
 .kp-extra-btn:hover {
-  background: #f5f6f8;
+  background: var(--surface-solid-hover);
 }
 
 .kp-extra-btn:active {
@@ -897,10 +1061,10 @@ html, body {
   width: 232px;
   padding: 20px;
   border-radius: 0 24px 24px 0;
-  background: rgba(255, 255, 255, 0.65);
+  background: rgba(var(--glass-rgb), 0.65);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
-  border: 1px solid rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(var(--glass-rgb), 0.6);
   box-shadow: 0 12px 40px rgba(20, 24, 40, 0.14);
   cursor: grab;
 }
@@ -924,7 +1088,7 @@ html, body {
   align-items: center;
   justify-content: center;
   border-radius: 12px;
-  background: #f0f1f4;
+  background: var(--surface-1);
   color: var(--text-given);
   font-family: 'Outfit', 'Inter', sans-serif;
   font-size: 21px;
@@ -937,16 +1101,52 @@ html, body {
   display: flex;
 }
 
+/* ── 답지 패널: 정답 체크 / 정답 보기 (도움말/저장 패널과 같은 floating-panel) ── */
+.answer-sheet-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.answer-sheet-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 48px;
+  border-radius: 12px;
+  border: none;
+  background: var(--surface-1);
+  color: var(--text-given);
+  font-family: 'Outfit', 'Inter', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: normal;
+  word-break: keep-all;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.08s ease;
+}
+
+.answer-sheet-btn:hover {
+  background: var(--surface-1-hover);
+}
+
+.answer-sheet-btn.pressed {
+  transform: scale(0.96);
+}
+
+.answer-sheet-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
 .kp-sep {
   height: 1px;
-  background: rgba(35, 39, 51, 0.12);
+  background: rgba(var(--text-given-rgb), 0.12);
 }
 
 .kp-btn {
   height: 56px;
   border: none;
   border-radius: 14px;
-  background: #ffffff;
+  background: var(--surface-solid);
   color: var(--text-given);
   font-family: 'Outfit', 'Inter', sans-serif;
   font-size: 20px;
@@ -992,7 +1192,7 @@ html, body {
 }
 
 .kp-erase {
-  background: #fff1f1;
+  background: var(--surface-danger);
   color: var(--conflict);
   font-weight: 600;
 }
@@ -1016,7 +1216,7 @@ html, body {
 }
 
 .kp-reset-all:hover {
-  background: #fff1f1;
+  background: var(--surface-danger);
 }
 
 .kp-reset-all.pressed {
@@ -1025,6 +1225,25 @@ html, body {
 
 .kp-reset-all.hidden {
   display: none;
+}
+
+/* ── "내 메모 지우기" / "내 숫자 지우기" — 한 줄에 나란히 두다 보니 풀 문구가 안 들어가서
+   짧은 표현 + 2줄 줄바꿈 허용으로 좁은 폭에도 읽히게 한다. 짝이 hidden이면(싱글플레이)
+   flex:1이 자동으로 남은 폭을 채운다. ── */
+.kp-reset-row {
+  display: flex;
+  gap: 8px;
+}
+
+.kp-reset-half {
+  flex: 1 1 0;
+  min-width: 0;
+  height: auto;
+  min-height: 44px;
+  padding: 6px 4px;
+  font-size: 12px;
+  line-height: 1.3;
+  white-space: normal;
 }
 
 /* ── 완성 토스트 ── */
@@ -1075,10 +1294,10 @@ html, body {
   width: 300px;
   padding: 28px 24px 20px;
   border-radius: 20px;
-  background: rgba(255, 255, 255, 0.92);
+  background: rgba(var(--glass-rgb), 0.92);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
-  border: 1px solid rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(var(--glass-rgb), 0.6);
   box-shadow: 0 24px 60px rgba(20, 24, 40, 0.28);
   cursor: default;
   transform: scale(0.94) translateY(6px);
@@ -1119,12 +1338,12 @@ html, body {
 }
 
 .modal-btn-cancel {
-  background: #f0f1f4;
+  background: var(--surface-1);
   color: var(--text-given);
 }
 
 .modal-btn-cancel:hover {
-  background: #e6e7ec;
+  background: var(--surface-1-hover);
 }
 
 .modal-btn-danger {
@@ -1133,7 +1352,7 @@ html, body {
 }
 
 .modal-btn-danger:hover {
-  background: #cc3535;
+  background: var(--conflict-hover);
 }
 
 .modal-btn-primary {
@@ -1151,7 +1370,7 @@ html, body {
   font-family: 'Outfit', 'Inter', sans-serif;
   font-weight: 700;
   text-align: center;
-  color: rgba(35, 39, 51, 0.35);
+  color: rgba(var(--text-given-rgb), 0.35);
 }
 
 .coop-vote-status.agreed {
@@ -1172,10 +1391,10 @@ html, body {
   overflow-y: auto;
   padding: 24px;
   border-radius: 20px;
-  background: rgba(255, 255, 255, 0.92);
+  background: rgba(var(--glass-rgb), 0.92);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
-  border: 1px solid rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(var(--glass-rgb), 0.6);
   box-shadow: 0 24px 60px rgba(20, 24, 40, 0.28);
   cursor: grab;
   opacity: 0;
@@ -1198,7 +1417,7 @@ html, body {
   height: 28px;
   border: none;
   border-radius: 8px;
-  background: #f0f1f4;
+  background: var(--surface-1);
   color: var(--text-given);
   font-size: 13px;
   cursor: pointer;
@@ -1206,7 +1425,7 @@ html, body {
 }
 
 .floating-panel-close:hover {
-  background: #e6e7ec;
+  background: var(--surface-1-hover);
 }
 
 .floating-panel-close:active {
@@ -1267,16 +1486,16 @@ html, body {
 }
 
 .save-btn:hover {
-  background: #c3e6d1;
+  background: var(--cell-selected-hover);
 }
 
 .load-btn {
-  background: #f0f1f4;
+  background: var(--surface-1);
   color: var(--text-given);
 }
 
 .load-btn:hover:not(:disabled) {
-  background: #e6e7ec;
+  background: var(--surface-1-hover);
 }
 
 .load-btn:disabled {
@@ -1339,7 +1558,7 @@ html, body {
 }
 
 .help-desc {
-  color: rgba(35, 39, 51, 0.7);
+  color: rgba(var(--text-given-rgb), 0.7);
   margin-left: auto;
   text-align: right;
 }
@@ -1359,7 +1578,7 @@ html, body {
   flex: 0 0 auto;
   padding: 2px 8px;
   border-radius: 6px;
-  background: #f0f1f4;
+  background: var(--surface-1);
   font-family: 'Outfit', 'Inter', sans-serif;
   font-size: 11px;
   font-weight: 700;
@@ -1369,7 +1588,7 @@ html, body {
 .help-rule-desc {
   font-size: 12.5px;
   line-height: 1.5;
-  color: rgba(35, 39, 51, 0.72);
+  color: rgba(var(--text-given-rgb), 0.72);
 }
 
 /* ── 퍼즐 선택 목록 ── */
@@ -1384,7 +1603,7 @@ html, body {
   padding: 0 14px;
   border: none;
   border-radius: 12px;
-  background: #f7f8fa;
+  background: var(--surface-2);
   color: var(--text-given);
   font-family: 'Outfit', 'Inter', sans-serif;
   font-size: 14px;
@@ -1395,7 +1614,7 @@ html, body {
 }
 
 .puzzle-item:hover {
-  background: #eef0f3;
+  background: var(--surface-2-hover);
 }
 
 .puzzle-item:active {
@@ -1412,7 +1631,7 @@ kbd {
   display: inline-block;
   padding: 3px 7px;
   border-radius: 6px;
-  background: #f0f1f4;
+  background: var(--surface-1);
   border: 1px solid rgba(0, 0, 0, 0.08);
   font-family: 'Outfit', 'Inter', sans-serif;
   font-size: 11px;

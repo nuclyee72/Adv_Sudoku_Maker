@@ -8,11 +8,12 @@ import { Keypad } from './ui/Keypad.js';
 import { PUZZLES } from './puzzles/index.js';
 import { shapes as GENERATE_SHAPES, getShape, renderShapeThumb } from './generator/shapes.js';
 import {
-  ELEMENT_KEYS, DIFFICULTIES, ELEMENT_LABELS, DIFFICULTY_LABELS,
+  ELEMENT_KEYS, DIFFICULTY_LEVELS, AMOUNTS, ELEMENT_LABELS, DIFFICULTY_LABELS, AMOUNT_LABELS,
   resolveRandomSelection, encodeSelectionId, decodeSelectionId,
   buildTemplateFromSelection,
 } from './generator/composeTemplate.js';
 import { generatePuzzle } from './generator/generatePuzzle.js';
+import { solveBoard } from './generator/solveBoard.js';
 import * as roomClient from './net/roomClient.js';
 import { reviveStructures } from './puzzles/reviveStructures.js';
 import { colorForIndex } from './net/playerColors.js';
@@ -24,6 +25,7 @@ const keypadGrid   = document.getElementById('keypad-grid');
 const kpToggle     = document.getElementById('kp-toggle');
 const btnResetAll  = document.getElementById('btn-reset-all');
 const btnResetMine = document.getElementById('btn-reset-mine');
+const btnClearMyNotes = document.getElementById('btn-clear-my-notes');
 const toast        = document.getElementById('toast');
 const generateStatus = document.getElementById('generate-status');
 
@@ -55,6 +57,13 @@ const timerDisplay      = document.getElementById('timer-display');
 const boardWrapper      = document.querySelector('.board-wrapper');
 const boardStartOverlay = document.getElementById('board-start-overlay');
 const btnStartTimer     = document.getElementById('btn-start-timer');
+
+const btnOpenAnswerSheet = document.getElementById('btn-open-answer-sheet');
+const answerSheetPanel   = document.getElementById('answer-sheet-panel');
+const answerSheetClose   = document.getElementById('answer-sheet-close');
+const btnAnswerCheck     = document.getElementById('btn-answer-check');
+const btnAnswerReveal    = document.getElementById('btn-answer-reveal');
+const btnToggleDarkMode  = document.getElementById('btn-toggle-dark-mode');
 
 const landingScreen      = document.getElementById('landing-screen');
 const gameScreen         = document.getElementById('game-screen');
@@ -143,6 +152,14 @@ board.loadGivens(initialPuzzle.givens);
 
 const renderer = new BoardRenderer(svg, board);
 
+// ── 답지 (정답 체크 / 정답 보기): 현재 퍼즐의 structures/givens/(있다면) 정답을 기억해뒀다가,
+// 처음 클릭되는 시점에 한 번만 준비한다(안 쓰면 계산 자체가 아예 안 일어남).
+let currentPuzzleStructures = initialPuzzle.structures;
+let currentPuzzleGivens = initialPuzzle.givens;
+let currentPuzzleSolution = initialPuzzle.solution ?? null; // 생성기가 내려준 [{row,col,value}] - 레거시 수록 퍼즐엔 없음
+let cachedSolution = null;   // "r,c" -> value Map, 준비 완료 후 캐싱(같은 퍼즐 안에서 재사용)
+let solvingPromise = null;   // solveBoard 계산 도중 중복 호출 방지용(정답이 미리 없는 경우에만 씀)
+
 // ── 초기 배치: 화면에 맞게 축소 후 중앙 정렬 ──
 function fitAndCenterBoard() {
   const naturalW = parseFloat(svg.getAttribute('width'))  || 0;
@@ -213,7 +230,8 @@ function isFloatingPanelOpen() {
     || helpPanel.classList.contains('show')
     || puzzlePanel.classList.contains('show')
     || generatePanel.classList.contains('show')
-    || coopVotePanel.classList.contains('show');
+    || coopVotePanel.classList.contains('show')
+    || answerSheetPanel.classList.contains('show');
 }
 
 /** 저장/도움말/퍼즐 선택 패널 — 최초로 열릴 때만 화면 중앙 좌표를 계산해 배치, 이후엔 드래그로 옮긴 위치 유지 */
@@ -232,6 +250,7 @@ new DragPanel(helpPanel, helpPanel, { clamp: 'partial', minVisible: 40 });
 new DragPanel(puzzlePanel, puzzlePanel, { clamp: 'partial', minVisible: 40 });
 new DragPanel(generatePanel, generatePanel, { clamp: 'partial', minVisible: 40 });
 new DragPanel(coopVotePanel, coopVotePanel, { clamp: 'partial', minVisible: 40 });
+new DragPanel(answerSheetPanel, answerSheetPanel, { clamp: 'partial', minVisible: 40 });
 
 // ── 확인 모달 (모두 지우기 / 불러오기 / 퍼즐 변경 등 공용) ──
 let pendingConfirmAction = null;
@@ -291,6 +310,13 @@ btnResetAll.addEventListener('click', () => {
   }
 });
 
+btnClearMyNotes.addEventListener('click', () => {
+  if (boardLocked) return;
+  btnClearMyNotes.classList.add('pressed');
+  setTimeout(() => btnClearMyNotes.classList.remove('pressed'), 130);
+  renderer.clearAllNotes();
+});
+
 btnResetMine.addEventListener('click', () => {
   if (boardLocked || !coopActive) return;
   btnResetMine.classList.add('pressed');
@@ -300,6 +326,91 @@ btnResetMine.addEventListener('click', () => {
     .filter((c) => !c.isGiven && c.value !== null && coopCellOwners.get(`${c.row},${c.col}`) === myId);
   if (!cells.length) return;
   askConfirm('내가 입력한 숫자만 지울까요?', () => coopClearCells(cells));
+});
+
+// ── 답지 (정답 체크 / 정답 보기) — 싱글플레이·협동 전용, 배틀에선 숨김(enterBattleGame/exitBattleUI) ──
+function toggleAnswerSheetPanel() {
+  if (answerSheetPanel.classList.contains('show')) closePanel(answerSheetPanel);
+  else openFloatingPanel(answerSheetPanel);
+}
+btnOpenAnswerSheet.addEventListener('click', toggleAnswerSheetPanel);
+answerSheetClose.addEventListener('click', () => closePanel(answerSheetPanel));
+
+/**
+ * 같은 퍼즐 안에서는 한 번만 준비해 재사용한다. 생성기가 정답을 함께 내려준 퍼즐은
+ * (배열 → Map 변환만 하면 되므로) 즉시 끝나고, 레거시 수록 퍼즐처럼 정답이 없는 경우에만
+ * solveBoard로 지연 계산한다.
+ */
+function ensureSolution() {
+  if (cachedSolution) return Promise.resolve(cachedSolution);
+  if (currentPuzzleSolution) {
+    cachedSolution = new Map(currentPuzzleSolution.map((s) => [`${s.row},${s.col}`, s.value]));
+    return Promise.resolve(cachedSolution);
+  }
+  if (!solvingPromise) {
+    solvingPromise = solveBoard(currentPuzzleStructures, currentPuzzleGivens)
+      .then((sol) => { cachedSolution = sol; return sol; })
+      .finally(() => { solvingPromise = null; });
+  }
+  return solvingPromise;
+}
+
+function showAnswerError() {
+  generateStatus.textContent = '⚠️ 정답을 계산하지 못했습니다';
+  generateStatus.classList.add('show');
+  setTimeout(() => generateStatus.classList.remove('show'), 2400);
+}
+
+/** 계산 중 중복 클릭을 막기 위해 두 버튼 다 잠깐 비활성화하고 라벨을 바꿔둔다 */
+async function runWithAnswerButtonsBusy(btn, busyText, fn) {
+  const otherBtn = btn === btnAnswerCheck ? btnAnswerReveal : btnAnswerCheck;
+  const prevText = btn.textContent;
+  btn.disabled = true;
+  otherBtn.disabled = true;
+  btn.textContent = busyText;
+  try {
+    await fn();
+  } finally {
+    btn.disabled = false;
+    otherBtn.disabled = false;
+    btn.textContent = prevText;
+  }
+}
+
+btnAnswerCheck.addEventListener('click', () => {
+  if (boardLocked) return;
+  const message = coopActive
+    ? '입력한 숫자를 정답과 비교해서 맞는 칸을 고정할까요?<br/>모든 참가자의 보드에 함께 반영됩니다. (턴테이블 제외)'
+    : '입력한 숫자를 정답과 비교해서 맞는 칸을 고정할까요?<br/>맞는 칸은 더 이상 수정할 수 없어요. (턴테이블 제외)';
+  askConfirm(message, () => runWithAnswerButtonsBusy(btnAnswerCheck, '확인 중...', async () => {
+    if (coopActive) {
+      if (mp?.socket) roomClient.sendCoopAnswerCheck(mp.socket);
+      closePanel(answerSheetPanel);
+      return;
+    }
+    const solution = await ensureSolution();
+    if (!solution) { showAnswerError(); return; }
+    renderer.lockCorrectCells(solution);
+    closePanel(answerSheetPanel);
+  }));
+});
+
+btnAnswerReveal.addEventListener('click', () => {
+  if (boardLocked) return;
+  const message = coopActive
+    ? '정답을 채울까요?<br/>모든 참가자의 보드에 함께 반영되고, 직접 입력한 것처럼 이후에도 수정할 수 있어요. (턴테이블 제외)'
+    : '정답을 채울까요?<br/>직접 입력한 것처럼 채워지고, 이후에도 수정할 수 있어요. (턴테이블 제외)';
+  askConfirm(message, () => runWithAnswerButtonsBusy(btnAnswerReveal, '채우는 중...', async () => {
+    if (coopActive) {
+      if (mp?.socket) roomClient.sendCoopAnswerReveal(mp.socket);
+      closePanel(answerSheetPanel);
+      return;
+    }
+    const solution = await ensureSolution();
+    if (!solution) { showAnswerError(); return; }
+    renderer.revealAnswers(solution);
+    closePanel(answerSheetPanel);
+  }));
 });
 
 // ── 저장 / 불러오기 ──
@@ -386,10 +497,20 @@ function mountBoard(structures, givens) {
   renderer.selectFirstCell();
   clearAllSaveSlots();
   refreshSaveSlots(); // 세이브 패널이 이미 열려있어도 즉시 "비어있음"으로 반영
+
+  currentPuzzleStructures = structures;
+  currentPuzzleGivens = givens;
+  currentPuzzleSolution = null; // 필요하면 호출 쪽(loadPuzzle 등)이 직접 채워넣는다
+  cachedSolution = null;
+  solvingPromise = null;
+  closePanel(answerSheetPanel);
 }
 
 function loadPuzzle(puzzle) {
   mountBoard(puzzle.structures, puzzle.givens);
+  // 생성기가 함께 내려준 정답이 있으면 그대로 쓰고(재계산 불필요, 턴테이블 자유도로 인한
+  // 오답 위험 없음), 없으면(레거시 수록 퍼즐) 클릭 시점에 solveBoard로 지연 계산한다.
+  currentPuzzleSolution = puzzle.solution ?? null;
   activePuzzleId = puzzle.id;
   closePanel(puzzlePanel);
   if (timerEnabled) armTimer(); // 타이머 켜져있으면 새 퍼즐도 "시작" 누르기 전까지 잠금
@@ -425,23 +546,9 @@ puzzleClose.addEventListener('click', () => closePanel(puzzlePanel));
 function createPickerState() {
   return {
     shapeId: 'single',
-    elements: { inequality: false, consecutive: false, snake: false, turntable: false, random: false },
-    difficulty: 'normal',
+    elements: { inequality: 'none', consecutive: 'none', snake: 'none', turntable: 'none', random: false },
+    difficulty: 3,
   };
-}
-
-function renderSingleSelectGroup(container, options, selectedId, disabled, onSelect) {
-  container.innerHTML = '';
-  for (const opt of options) {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'mode-toggle-btn';
-    btn.textContent = opt.label;
-    btn.classList.toggle('active', opt.id === selectedId);
-    btn.disabled = disabled;
-    btn.addEventListener('click', () => onSelect(opt.id));
-    container.appendChild(btn);
-  }
 }
 
 /** 모양 id에 맞는 미니 미리보기 노드('랜덤'은 보드 배치가 없으므로 주사위 이모지로 대신한다) */
@@ -513,30 +620,78 @@ document.addEventListener('click', (e) => {
   closeAllShapePickers();
 });
 
-function renderElementGroup(container, elements, disabled, onToggle) {
+/**
+ * N개 옵션 위를 미끄러지듯 움직이는 thumb가 달린 트랙 하나를 만든다 — 요소별 없음/보통/
+ * 많음 슬라이더와 난이도 5단 슬라이더가 이 하나의 구현을 공유한다. 실제 드래그가 아니라
+ * 클릭으로 값을 바꾸지만, 값이 바뀔 때 thumb가 옆 칸으로 미끄러지듯 움직여서(transform
+ * transition) 슬라이더 조작감을 낸다.
+ */
+function buildSlideTrack(labels, selectedIndex, disabled, onSelectIndex) {
+  const track = document.createElement('div');
+  track.className = 'element-slider-track';
+  track.classList.toggle('disabled', disabled);
+
+  const thumb = document.createElement('div');
+  thumb.className = 'element-slider-thumb';
+  thumb.style.width = `calc(${100 / labels.length}% - ${4 / labels.length}px)`;
+  thumb.style.transform = `translateX(${selectedIndex * 100}%)`;
+  track.appendChild(thumb);
+
+  labels.forEach((label, i) => {
+    const opt = document.createElement('button');
+    opt.type = 'button';
+    opt.className = 'element-slider-opt';
+    opt.textContent = label;
+    opt.classList.toggle('active', i === selectedIndex);
+    opt.disabled = disabled;
+    opt.addEventListener('click', () => onSelectIndex(i));
+    track.appendChild(opt);
+  });
+
+  return track;
+}
+
+/** 요소마다 없음/보통/많음 3단 슬라이더 한 줄 + 맨 아래 "랜덤" 토글. */
+function renderElementGroup(container, elements, disabled, onSetAmount, onToggleRandom) {
   container.innerHTML = '';
   for (const key of ELEMENT_KEYS) {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'mode-toggle-btn';
-    btn.textContent = ELEMENT_LABELS[key];
-    btn.classList.toggle('active', elements[key]);
-    btn.disabled = disabled || elements.random;
-    btn.addEventListener('click', () => onToggle(key));
-    container.appendChild(btn);
+    const row = document.createElement('div');
+    row.className = 'element-slider-row';
+
+    const label = document.createElement('span');
+    label.className = 'element-slider-label';
+    label.textContent = ELEMENT_LABELS[key];
+    row.appendChild(label);
+
+    const isDisabled = disabled || elements.random;
+    const track = buildSlideTrack(
+      AMOUNTS.map(a => AMOUNT_LABELS[a]), AMOUNTS.indexOf(elements[key]), isDisabled,
+      (i) => onSetAmount(key, AMOUNTS[i]));
+    row.appendChild(track);
+    container.appendChild(row);
   }
+
   const randomBtn = document.createElement('button');
   randomBtn.type = 'button';
-  randomBtn.className = 'mode-toggle-btn';
-  randomBtn.textContent = '랜덤';
+  randomBtn.className = 'mode-toggle-btn element-random-btn';
+  randomBtn.textContent = '요소 랜덤';
   randomBtn.classList.toggle('active', elements.random);
   randomBtn.disabled = disabled;
-  randomBtn.addEventListener('click', () => onToggle('random'));
+  randomBtn.addEventListener('click', onToggleRandom);
   container.appendChild(randomBtn);
 }
 
+/** 난이도 1~5단 슬라이더 한 줄 — 요소 슬라이더와 같은 트랙 구현을 옆 라벨 없이 폭 100%로 쓴다. */
+function renderDifficultySlider(container, level, disabled, onSetLevel) {
+  container.innerHTML = '';
+  const track = buildSlideTrack(
+    DIFFICULTY_LEVELS.map(l => DIFFICULTY_LABELS[l]), DIFFICULTY_LEVELS.indexOf(level), disabled,
+    (i) => onSetLevel(DIFFICULTY_LEVELS[i]));
+  track.classList.add('wide');
+  container.appendChild(track);
+}
+
 const SHAPE_OPTIONS = [...GENERATE_SHAPES.map(s => ({ id: s.id, label: s.label })), { id: 'random', label: '랜덤' }];
-const DIFFICULTY_OPTIONS = DIFFICULTIES.map(d => ({ id: d, label: DIFFICULTY_LABELS[d] }));
 
 /**
  * 모양/요소/난이도 3그룹을 컨테이너에 그려주는 선택기. onChange는 사람이 버튼을 눌러
@@ -550,11 +705,11 @@ function createPicker({ shapeEl, elementEl, difficultyEl, onChange = () => {} })
     renderShapeGroup(shapeEl, SHAPE_OPTIONS, state.shapeId, disabled, (id) => {
       state.shapeId = id; rerender(); onChange(state);
     });
-    renderElementGroup(elementEl, state.elements, disabled, (key) => {
-      state.elements[key] = !state.elements[key]; rerender(); onChange(state);
-    });
-    renderSingleSelectGroup(difficultyEl, DIFFICULTY_OPTIONS, state.difficulty, disabled, (id) => {
-      state.difficulty = id; rerender(); onChange(state);
+    renderElementGroup(elementEl, state.elements, disabled,
+      (key, amount) => { state.elements[key] = amount; rerender(); onChange(state); },
+      () => { state.elements.random = !state.elements.random; rerender(); onChange(state); });
+    renderDifficultySlider(difficultyEl, state.difficulty, disabled, (level) => {
+      state.difficulty = level; rerender(); onChange(state);
     });
   }
 
@@ -773,6 +928,13 @@ function connectRoomSocket(code, token) {
       for (const c of msg.cells) setCoopCellOwner(c.row, c.col, c.filledBy);
       renderCoopLeaderboard();
     },
+    onCoopAnswerUpdate: (msg) => {
+      if (!coopActive) return;
+      renderer.applyRemoteAnswerUpdate(msg.cells);
+      // 체크/보기로 고정된 칸은 given과 같아져 더는 "누가 채웠는지"가 의미 없으므로 집계에서 뺀다
+      for (const c of msg.cells) setCoopCellOwner(c.row, c.col, null);
+      renderCoopLeaderboard();
+    },
   });
 }
 
@@ -910,7 +1072,7 @@ btnWrStart.addEventListener('click', async () => {
     const template = buildTemplateFromSelection(decoded);
     const puzzle = await generatePuzzle(template);
     await roomClient.startRoom(mp.code, mp.token, {
-      puzzle: { structures: puzzle.structures, givens: puzzle.givens },
+      puzzle: { structures: puzzle.structures, givens: puzzle.givens, solution: puzzle.solution },
     });
   } catch (err) {
     showFormError(wrError, err.message);
@@ -1129,6 +1291,7 @@ function exitBattleUI() {
   closePanel(battleEndedOverlay);
   setMultiplayerControlsDisabled(false);
   btnOpenSave.disabled = false;
+  btnOpenAnswerSheet.classList.remove('hidden'); // 답지는 배틀 전용으로 숨겼던 것 - 싱글/협동으로 돌아가면 복원
 }
 
 function enterBattleGame(room) {
@@ -1143,6 +1306,8 @@ function enterBattleGame(room) {
 
   setMultiplayerControlsDisabled(true);
   btnOpenSave.disabled = true; // 배틀은 각자 독립된 개인전이라 저장/불러오기를 막아둔다
+  btnOpenAnswerSheet.classList.add('hidden'); // 정답 보기는 배틀(경쟁) 취지에 안 맞으므로 숨김
+  closePanel(answerSheetPanel);
   enterGame();
 
   battleActive = true;
@@ -1525,6 +1690,28 @@ timerToggleBtn.addEventListener('click', () => {
   timerDisplay.classList.toggle('show', timerEnabled);
   if (timerEnabled) armTimer();
   else disarmTimer();
+});
+
+// ── 다크 모드 — index.html 머리말의 인라인 스크립트가 body 렌더 전에 이미 한 번
+// 적용해뒀으므로(라이트 테마 번쩍임 방지), 여기서는 버튼 활성 표시를 맞추고 토글만 담당한다 ──
+const DARK_MODE_KEY = 'sudoku-dark-mode';
+
+function saveDarkModePref(on) {
+  try { localStorage.setItem(DARK_MODE_KEY, on ? '1' : '0'); } catch { /* 저장 실패해도 진행엔 지장 없음 */ }
+}
+
+function applyDarkMode(on) {
+  if (on) document.documentElement.setAttribute('data-theme', 'dark');
+  else document.documentElement.removeAttribute('data-theme');
+  btnToggleDarkMode.classList.toggle('active', on);
+}
+
+applyDarkMode(document.documentElement.getAttribute('data-theme') === 'dark');
+
+btnToggleDarkMode.addEventListener('click', () => {
+  const next = document.documentElement.getAttribute('data-theme') !== 'dark';
+  applyDarkMode(next);
+  saveDarkModePref(next);
 });
 
 btnStartTimer.addEventListener('click', () => {

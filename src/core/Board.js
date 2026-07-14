@@ -89,6 +89,17 @@ export class Board {
     }
   }
 
+  /** 턴테이블 영역에 속한 칸의 "row,col" 키 집합 — 회전 때문에 칸별 "정답"이 고정되지
+   * 않는 기능(정답 체크/보기 등)에서 대상 칸을 제외하는 용도로 쓴다. */
+  getTurntableCellKeys() {
+    const keys = new Set();
+    for (const s of this.structures) {
+      if (s.type !== 'turntable') continue;
+      for (const { row, col } of s.coords) keys.add(`${row},${col}`);
+    }
+    return keys;
+  }
+
   getPeers(row, col) {
     const peerSet = new Set();
     for (const struct of this.structures) {
