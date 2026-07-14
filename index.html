@@ -140,6 +140,10 @@
 
   <div id="game-screen" class="game-screen hidden">
 
+  <!-- 그리기 모드 전용 입력면 - 게임판 밖(화면 전체)에서도 그리기를 시작할 수 있도록 뷰포트 전체를 덮는다.
+       그리기 모드가 꺼져 있을 땐 pointer-events:none이라 평소 화면 조작을 그대로 통과시킨다. -->
+  <div id="draw-overlay" class="draw-overlay"></div>
+
   <!-- 스도쿠 판 (패널 없이 판만 떠 있음) -->
   <div id="board-panel" class="board-panel">
     <div class="board-wrapper">
@@ -234,6 +238,10 @@
       <div class="kp-body">
         <div id="timer-display" class="timer-display">00:00.00</div>
         <div id="keypad-grid" class="kp-grid"></div>
+        <div class="kp-reset-row">
+          <button id="btn-toggle-draw" class="kp-reset-all kp-reset-half kp-draw-toggle" type="button" aria-label="그리기 (E)">그리기</button>
+          <button id="btn-clear-draw" class="kp-reset-all kp-reset-half" type="button">그림 지우기</button>
+        </div>
         <div class="kp-sep"></div>
         <div class="kp-reset-row">
           <button id="btn-clear-my-notes" class="kp-reset-all kp-reset-half" type="button">내 메모 지우기</button>

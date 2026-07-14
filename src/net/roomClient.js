@@ -69,7 +69,10 @@ export function coopLoad(code, token, { cells }) {
  * 방 상태 push를 받는 WebSocket 연결.
  * @returns {WebSocket} 호출측이 필요시 .close()로 명시적으로 나갈 수 있도록 소켓 인스턴스 반환
  */
-export function connectSocket(code, token, { onState, onClose, onCoopCellUpdate, onCoopCursor, onCoopRotate, onCoopAnswerUpdate } = {}) {
+export function connectSocket(code, token, {
+  onState, onClose, onCoopCellUpdate, onCoopCursor, onCoopRotate, onCoopAnswerUpdate,
+  onCoopDraw, onCoopDrawUndo, onCoopDrawClear,
+} = {}) {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   const socket = new WebSocket(`${proto}//${location.host}/ws?code=${code}&token=${token}`);
 
@@ -85,6 +88,9 @@ export function connectSocket(code, token, { onState, onClose, onCoopCellUpdate,
     else if (msg.type === 'coopCursor' && onCoopCursor) onCoopCursor(msg);
     else if (msg.type === 'coopRotate' && onCoopRotate) onCoopRotate(msg);
     else if (msg.type === 'coopAnswerUpdate' && onCoopAnswerUpdate) onCoopAnswerUpdate(msg);
+    else if (msg.type === 'coopDraw' && onCoopDraw) onCoopDraw(msg);
+    else if (msg.type === 'coopDrawUndo' && onCoopDrawUndo) onCoopDrawUndo(msg);
+    else if (msg.type === 'coopDrawClear' && onCoopDrawClear) onCoopDrawClear(msg);
   });
 
   socket.addEventListener('close', () => {
@@ -122,4 +128,22 @@ export function sendCoopAnswerCheck(socket) {
 export function sendCoopAnswerReveal(socket) {
   if (!socket || socket.readyState !== WebSocket.OPEN) return;
   socket.send(JSON.stringify({ type: 'coopAnswerReveal' }));
+}
+
+/** 협동 모드 - 완성된 그리기 획을 서버로 전송 (서버가 저장 후 나 자신을 제외한 전원에게 relay) */
+export function sendCoopDraw(socket, { id, points }) {
+  if (!socket || socket.readyState !== WebSocket.OPEN) return;
+  socket.send(JSON.stringify({ type: 'coopDraw', strokeId: id, points }));
+}
+
+/** 협동 모드 - 내가 실행 취소한 획을 서버로 전송 (다른 참가자 화면에서도 지워지도록) */
+export function sendCoopDrawUndo(socket, strokeId) {
+  if (!socket || socket.readyState !== WebSocket.OPEN) return;
+  socket.send(JSON.stringify({ type: 'coopDrawUndo', strokeId }));
+}
+
+/** 협동 모드 - 그리기 전부 지우기 요청 (서버가 저장된 획을 비운 후 전원에게 브로드캐스트) */
+export function sendCoopDrawClear(socket) {
+  if (!socket || socket.readyState !== WebSocket.OPEN) return;
+  socket.send(JSON.stringify({ type: 'coopDrawClear' }));
 }

@@ -10,6 +10,7 @@ const PAD        = 8;
 const THIN       = 1;
 const THICK      = 3;
 const GRID_THICK = 6; // 9x9 판 전체 테두리 — 3x3 박스 테두리(THICK)보다 두껍게
+const DRAW_WIDTH = 3.5; // 그리기 펜 굵기
 
 export class BoardRenderer {
   /**
@@ -33,11 +34,31 @@ export class BoardRenderer {
     /** remoteInputHandler와 같은 원리, 턴테이블 회전(structure, steps)용 */
     this.remoteRotateHandler = null;
 
-    /** 실행 취소 스택 — 각 항목은 [{row, col, prevValue, prevCandidates}, ...] */
+    /**
+     * 실행 취소 스택 — 각 항목은 [{row, col, prevValue, prevCandidates}, ...](칸 입력) 이거나
+     * {type:'stroke', strokeId}(그리기 획) 중 하나 — undo()가 항목 형태를 보고 분기한다
+     */
     this._undoStack = [];
 
     /** boardDrag 참조 — 드래그 후 클릭 억제에 사용 */
     this.boardDrag = null;
+
+    /** 그리기 기능 — 획 목록, 켜짐 여부, 그리는 중인 획 */
+    this._strokes = [];
+    this.drawMode = false;
+    this._activeStroke = null;
+    this._activePointerId = null;
+
+    /** 새 획을 그릴 때 쓸 색 — 싱글/배틀은 기본 펜 색, 협동은 main.js가 내 참가자 색으로 맞춰준다 */
+    this.drawColor = 'var(--draw-ink)';
+    /** 협동 모드에서 내가 그린 획에 붙일 참가자 id — main.js가 방 입장 시 채워준다 */
+    this.myPlayerId = null;
+    /** "이 참가자 그림 숨기기"로 로컬에서 감춰둔 participant id 집합 */
+    this._hiddenDrawPlayers = new Set();
+
+    /** 설정돼 있으면 로컬에서 완성된 획/삭제된 획을 알려준다(협동 모드 브로드캐스트용) */
+    this.onStrokeAdded = null;
+    this.onStrokeRemoved = null;
 
     this._els    = new Map(); // "r,c" → {rect, text, conflictRect}
     this._minRow = 0;
@@ -110,6 +131,156 @@ export class BoardRenderer {
     this._gRemoteCursors = this._g('g-remote-cursors');
     this._gRemoteCursors.setAttribute('pointer-events', 'none');
     this.svg.appendChild(this._gRemoteCursors);
+
+    // 그리기(펜) 레이어 — 무엇에 겹쳐 그리든 항상 보이도록 최상단에 둔다.
+    // 획 목록(this._strokes)은 render()가 다시 불려도 유지되므로 여기서 다시 그려준다.
+    this._gDraw = this._g('g-draw');
+    this._gDraw.setAttribute('pointer-events', 'none');
+    this.svg.appendChild(this._gDraw);
+    for (const stroke of this._strokes) this._renderStroke(stroke);
+
+    this.svg.classList.toggle('draw-mode', this.drawMode);
+  }
+
+  // ── 그리기(펜) ──
+
+  /**
+   * 그리기 모드일 때 게임판 밖(화면 전체)에서도 입력을 받을 수 있도록, main.js가 만든
+   * 뷰포트 전체 크기의 HTML 오버레이 요소를 입력면으로 등록한다. render()가 다시 불려도
+   * (퍼즐 교체 등) 이 요소 자체는 SVG 밖에 있어 계속 살아있으므로 한 번만 호출하면 된다.
+   * 좌표 변환(_svgPointFromClient)은 클릭 위치가 보드 영역 밖이어도 그대로 동작한다.
+   */
+  bindExternalDrawSurface(el) {
+    this._externalDrawSurface = el;
+    this._bindDrawEvents(el);
+  }
+
+  /** 그리기 모드 on/off — 켜지면 화면 전체(게임판 밖 포함) 포인터 입력이 칸 선택 대신 그리기로 간다 */
+  setDrawMode(on) {
+    this.drawMode = on;
+    if (this._externalDrawSurface) this._externalDrawSurface.classList.toggle('draw-mode', on);
+    this.svg.classList.toggle('draw-mode', on);
+    if (!on && this._activeStroke) this._endStroke();
+  }
+
+  _svgPointFromClient(clientX, clientY) {
+    const ctm = this.svg.getScreenCTM();
+    if (!ctm) return { x: 0, y: 0 };
+    const pt = this.svg.createSVGPoint();
+    pt.x = clientX;
+    pt.y = clientY;
+    const local = pt.matrixTransform(ctm.inverse());
+    return { x: local.x, y: local.y };
+  }
+
+  _strokeToPathD(points) {
+    if (!points.length) return '';
+    if (points.length === 1) return `M ${points[0].x} ${points[0].y} L ${points[0].x} ${points[0].y}`;
+    return points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
+  }
+
+  /** 획 하나를 SVG path로 만들어 그리기 레이어에 붙인다(로컬 진행 중/완성 획, 원격 획 공용) */
+  _renderStroke(stroke) {
+    const el = this._el('path');
+    el.setAttribute('fill', 'none');
+    el.setAttribute('stroke', stroke.color || 'var(--draw-ink)');
+    el.setAttribute('stroke-width', DRAW_WIDTH);
+    el.setAttribute('stroke-linecap', 'round');
+    el.setAttribute('stroke-linejoin', 'round');
+    el.setAttribute('d', this._strokeToPathD(stroke.points));
+    if (stroke.playerId && this._hiddenDrawPlayers.has(stroke.playerId)) el.style.display = 'none';
+    stroke.el = el;
+    this._gDraw.appendChild(el);
+    return el;
+  }
+
+  _bindDrawEvents(rect) {
+    rect.addEventListener('pointerdown', (e) => {
+      if (!this.drawMode || e.button !== 0) return;
+      e.preventDefault();
+      rect.setPointerCapture(e.pointerId);
+      this._activePointerId = e.pointerId;
+      this._activeStroke = {
+        id: `s${Date.now()}${Math.random().toString(36).slice(2, 8)}`,
+        points: [this._svgPointFromClient(e.clientX, e.clientY)],
+        color: this.drawColor,
+        playerId: this.myPlayerId,
+      };
+      this._renderStroke(this._activeStroke);
+    });
+    rect.addEventListener('pointermove', (e) => {
+      if (!this._activeStroke || e.pointerId !== this._activePointerId) return;
+      const pt = this._svgPointFromClient(e.clientX, e.clientY);
+      const pts = this._activeStroke.points;
+      const last = pts[pts.length - 1];
+      if (Math.hypot(pt.x - last.x, pt.y - last.y) < 1.5) return; // 점이 너무 촘촘히 쌓이지 않게
+      pts.push(pt);
+      this._activeStroke.el.setAttribute('d', this._strokeToPathD(pts));
+    });
+    const finish = (e) => {
+      if (!this._activeStroke || e.pointerId !== this._activePointerId) return;
+      this._endStroke();
+    };
+    rect.addEventListener('pointerup', finish);
+    rect.addEventListener('pointercancel', finish);
+  }
+
+  _endStroke() {
+    const stroke = this._activeStroke;
+    this._activeStroke = null;
+    this._activePointerId = null;
+    if (!stroke) return;
+    this._strokes.push(stroke);
+    this._pushUndo({ type: 'stroke', strokeId: stroke.id });
+    if (this.onStrokeAdded) this.onStrokeAdded({ id: stroke.id, points: stroke.points });
+  }
+
+  _removeStrokeById(id) {
+    const idx = this._strokes.findIndex((s) => s.id === id);
+    if (idx === -1) return false;
+    const [stroke] = this._strokes.splice(idx, 1);
+    stroke.el?.remove();
+    return true;
+  }
+
+  /** 원격(다른 참가자)이 완성한 획을 받아 로컬에 반영 — undo 스택에는 쌓지 않는다 */
+  applyRemoteStroke(stroke) {
+    if (this._strokes.some((s) => s.id === stroke.id)) return;
+    const copy = { id: stroke.id, points: stroke.points, color: stroke.color, playerId: stroke.playerId ?? null };
+    this._strokes.push(copy);
+    this._renderStroke(copy);
+  }
+
+  /** 원격에서 실행 취소된 획을 로컬에서도 제거 */
+  applyRemoteStrokeRemove(strokeId) {
+    this._removeStrokeById(strokeId);
+  }
+
+  /** "이 참가자 그림 숨기기" — 서버/다른 참가자에겐 영향 없는 순전히 내 화면만의 필터 */
+  setPlayerStrokesHidden(playerId, hidden) {
+    if (hidden) this._hiddenDrawPlayers.add(playerId);
+    else this._hiddenDrawPlayers.delete(playerId);
+    for (const s of this._strokes) {
+      if (s.playerId === playerId && s.el) s.el.style.display = hidden ? 'none' : '';
+    }
+  }
+
+  /** 모든 획을 지운다("전부 지우기" 버튼 / 원격 clear 수신 공용) */
+  clearAllStrokes() {
+    for (const stroke of this._strokes) stroke.el?.remove();
+    this._strokes = [];
+    this._undoStack = this._undoStack.filter((e) => !(e && e.type === 'stroke'));
+  }
+
+  /** 서버가 내려준 획 스냅샷과 로컬 상태를 맞춘다(참가/재접속/재동기화 시 멱등하게 호출 가능) */
+  syncStrokes(strokesSnapshot) {
+    const incomingIds = new Set(strokesSnapshot.map((s) => s.id));
+    for (const s of [...this._strokes]) {
+      if (!incomingIds.has(s.id)) this._removeStrokeById(s.id);
+    }
+    for (const s of strokesSnapshot) {
+      if (!this._strokes.some((x) => x.id === s.id)) this.applyRemoteStroke(s);
+    }
   }
 
   // ── 셀 배경 + 텍스트 ──
@@ -982,7 +1153,6 @@ export class BoardRenderer {
       labelText.setAttribute('font-size', '11');
       labelText.setAttribute('font-family', "'Inter', sans-serif");
       labelText.setAttribute('font-weight', '600');
-      labelText.setAttribute('fill', '#ffffff');
       labelText.setAttribute('pointer-events', 'none');
       this._gRemoteCursorLabels.appendChild(labelText);
 
@@ -995,6 +1165,7 @@ export class BoardRenderer {
     entry.rect.setAttribute('y', y + 2);
     entry.rect.setAttribute('stroke', color);
 
+    entry.labelText.setAttribute('fill', this._readableTextColor(color));
     entry.labelText.textContent = label ?? '';
     const cx = x + CELL / 2;
     const labelY = y + CELL + 14;
@@ -1134,6 +1305,12 @@ export class BoardRenderer {
     this.board = newBoard;
     this.selectedCell = null;
     this._undoStack = [];
+    this._strokes = [];
+    this._activeStroke = null;
+    this.drawMode = false;
+    this.drawColor = 'var(--draw-ink)';
+    this.myPlayerId = null;
+    this._hiddenDrawPlayers = new Set();
     this.render();
   }
 
@@ -1148,10 +1325,16 @@ export class BoardRenderer {
     }
   }
 
-  /** 실행 취소 (Ctrl+Z) — 되돌릴 수 있는 횟수는 메모리가 허용하는 한 무제한 */
+  /** 실행 취소 (Ctrl+Z) — 되돌릴 수 있는 횟수는 메모리가 허용하는 한 무제한. 그리기 획도 같은
+   * 스택에 쌓이므로 가장 최근 동작이 칸 입력이든 획이든 순서대로 되돌아간다. */
   undo() {
     const entry = this._undoStack.pop();
     if (!entry) return;
+    if (entry.type === 'stroke') {
+      const removed = this._removeStrokeById(entry.strokeId);
+      if (removed && this.onStrokeRemoved) this.onStrokeRemoved(entry.strokeId);
+      return;
+    }
     for (const { row, col, prevValue, prevCandidates, prevIsGiven } of entry) {
       const cell = this.board.getCell(row, col);
       if (!cell) continue;
@@ -1287,6 +1470,16 @@ export class BoardRenderer {
   // ── SVG 유틸 ──
   _el(tag) { return document.createElementNS('http://www.w3.org/2000/svg', tag); }
   _g(id)   { const g = this._el('g'); g.id = id; return g; }
+
+  /** 배경색(hex) 밝기에 따라 검정/흰색 중 더 잘 읽히는 글자색을 골라준다 — 파스텔 배경엔 흰 글씨가 묻힘 */
+  _readableTextColor(hex) {
+    const m = /^#?([0-9a-f]{6})$/i.exec(hex ?? '');
+    if (!m) return '#ffffff';
+    const n = parseInt(m[1], 16);
+    const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    return luminance > 0.6 ? '#232733' : '#ffffff';
+  }
   _line(x1, y1, x2, y2, w, stroke, linecap = 'square') {
     const l = this._el('line');
     l.setAttribute('x1', x1); l.setAttribute('y1', y1);

@@ -3,8 +3,8 @@
  * 서버가 각 참가자에게 부여하는 colorIndex(참가 순서, 0~9)로 조회한다.
  */
 export const PLAYER_COLORS = [
-  '#e53e3e', '#dd6b20', '#d69e2e', '#38a169', '#2f9e60',
-  '#3182ce', '#2b6cb0', '#805ad5', '#d53f8c', '#718096',
+  '#f28b82', '#ffb37c', '#f5d06f', '#93d9a5', '#7fdbca',
+  '#8ecbef', '#9fb4f2', '#c6a8f0', '#f5a8c9', '#b9c2cf',
 ];
 
 export function colorForIndex(colorIndex) {

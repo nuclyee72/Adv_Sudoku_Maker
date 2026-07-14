@@ -9,6 +9,8 @@ const MIN_PLAYERS = 2;
 const MAX_PLAYERS = 10;
 const NICKNAME_MAX_LEN = 20;
 const BATTLE_COUNTDOWN_MS = 3000; // 배틀 시작 시 전원 동시 카운트다운 - 이 시간만큼 playingStartedAt을 미래로 잡는다
+const MAX_STROKE_POINTS = 3000; // 획 하나당 점 개수 상한 - 비정상적으로 큰 페이로드 방어
+const MAX_STROKES = 500; // 방 하나에 쌓이는 획 개수 상한 - 넘으면 오래된 것부터 정리
 
 export class RoomError extends Error {
   constructor(status, message) {
@@ -137,6 +139,9 @@ export function roomToJSON(room, viewerToken) {
   if (room.mode === 'coop' && room.status === 'playing' && room.coopVote) {
     json.coopVote = { votes: [...room.coopVote.votes] };
   }
+  if (room.mode === 'coop' && inPlay) {
+    json.coopDrawings = room.coopDrawings ?? [];
+  }
 
   if (viewerToken) {
     const viewer = room.players.get(viewerToken);
@@ -179,6 +184,7 @@ export function createRoom({ nickname, mode, maxPlayers, templateId }) {
     playingStartedAt: null,
     endedAt: null,
     coopVote: null,
+    coopDrawings: [],
   };
   rooms.set(code, room);
 
@@ -263,6 +269,7 @@ export function startRoom(code, token, { puzzle } = {}) {
     board.loadGivens(room.puzzle.givens);
     room.coopBoard = board;
     room.coopSolution = undefined; // 새 퍼즐이므로 이전 라운드의 캐시된 정답을 반드시 무효화
+    room.coopDrawings = [];
   }
 
   // 전원이 같은 순간에 시작하도록, "지금부터 카운트다운" 대신 미래의 한 시점을 공유 기준으로 잡는다
@@ -319,6 +326,7 @@ function resetRoomToWaiting(room) {
   room.coopBoard = undefined;
   room.coopSolution = undefined;
   room.coopVote = null;
+  room.coopDrawings = [];
   for (const p of room.players.values()) {
     p.gameStatus = null;
     p.finishedAt = null;
@@ -560,6 +568,59 @@ export function applyCoopCursor(code, token, { row, col }) {
   const player = getPlayerOrThrow(room, token);
   requireCoopPlaying(room);
   return { playerId: player.id, row, col };
+}
+
+/**
+ * 협동 모드 그리기 - 완성된 획을 authoritative 목록에 저장한다(도중 참가자도 이어서 볼 수 있도록).
+ * @returns {{ strokeId: string, points: Array<{x:number,y:number}> }}
+ */
+export function applyCoopDraw(code, token, { strokeId, points }) {
+  const room = getRoomOrThrow(code);
+  const player = getPlayerOrThrow(room, token);
+  requireCoopPlaying(room);
+
+  if (typeof strokeId !== 'string' || !strokeId || !Array.isArray(points)) {
+    throw new RoomError(400, '그리기 데이터가 올바르지 않습니다.');
+  }
+  const cleanPoints = points
+    .filter((p) => Number.isFinite(p?.x) && Number.isFinite(p?.y))
+    .slice(0, MAX_STROKE_POINTS)
+    .map((p) => ({ x: p.x, y: p.y }));
+  if (!cleanPoints.length) throw new RoomError(400, '그리기 데이터가 올바르지 않습니다.');
+
+  // 색은 클라이언트가 참가자 색 팔레트에서 그대로 계산할 수 있으니 여기선 누가 그렸는지(playerId)만
+  // authoritative하게 기록한다 - 클라이언트가 임의의 색을 보내 다른 사람 색으로 위장하지 못하게 함
+  if (!room.coopDrawings) room.coopDrawings = [];
+  if (room.coopDrawings.length >= MAX_STROKES) room.coopDrawings.shift();
+  room.coopDrawings.push({ id: strokeId, points: cleanPoints, playerId: player.id });
+  room.updatedAt = Date.now();
+  return { strokeId, points: cleanPoints, playerId: player.id };
+}
+
+/**
+ * 협동 모드 그리기 획 실행 취소 - authoritative 목록에서 해당 획을 제거한다.
+ * @returns {{ strokeId: string }}
+ */
+export function applyCoopDrawUndo(code, token, { strokeId }) {
+  const room = getRoomOrThrow(code);
+  getPlayerOrThrow(room, token);
+  requireCoopPlaying(room);
+
+  if (room.coopDrawings) {
+    room.coopDrawings = room.coopDrawings.filter((s) => s.id !== strokeId);
+  }
+  room.updatedAt = Date.now();
+  return { strokeId };
+}
+
+/** 협동 모드 그리기 전부 지우기 - authoritative 목록을 비운다. */
+export function applyCoopDrawClear(code, token) {
+  const room = getRoomOrThrow(code);
+  getPlayerOrThrow(room, token);
+  requireCoopPlaying(room);
+
+  room.coopDrawings = [];
+  room.updatedAt = Date.now();
 }
 
 /**

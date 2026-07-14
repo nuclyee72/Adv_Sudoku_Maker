@@ -97,6 +97,37 @@ function broadcastCoopAnswerUpdate(code, result) {
   }
 }
 
+// 그리기는 보낸 사람이 이미 로컬에서 즉시 그려둔 상태라(coopCursor와 동일한 이유로) 본인은 제외하고 relay한다
+function broadcastCoopDraw(code, senderWs, result) {
+  const sockets = roomSockets.get(code);
+  if (!sockets) return;
+  const payload = JSON.stringify({ type: 'coopDraw', ...result });
+  for (const ws of sockets) {
+    if (ws === senderWs) continue;
+    if (ws.readyState === ws.OPEN) ws.send(payload);
+  }
+}
+
+function broadcastCoopDrawUndo(code, senderWs, result) {
+  const sockets = roomSockets.get(code);
+  if (!sockets) return;
+  const payload = JSON.stringify({ type: 'coopDrawUndo', ...result });
+  for (const ws of sockets) {
+    if (ws === senderWs) continue;
+    if (ws.readyState === ws.OPEN) ws.send(payload);
+  }
+}
+
+function broadcastCoopDrawClear(code, senderWs) {
+  const sockets = roomSockets.get(code);
+  if (!sockets) return;
+  const payload = JSON.stringify({ type: 'coopDrawClear' });
+  for (const ws of sockets) {
+    if (ws === senderWs) continue;
+    if (ws.readyState === ws.OPEN) ws.send(payload);
+  }
+}
+
 function removeSocket(code, token) {
   const sockets = roomSockets.get(code);
   if (!sockets) return;
@@ -168,6 +199,17 @@ wss.on('connection', (ws, req) => {
         const result = await rooms.applyCoopAnswerReveal(ws.roomCode, ws.playerToken);
         broadcastCoopAnswerUpdate(ws.roomCode, result);
         if (result.solved) broadcastRoomState(ws.roomCode);
+      } else if (msg.type === 'coopDraw') {
+        const result = rooms.applyCoopDraw(ws.roomCode, ws.playerToken, {
+          strokeId: msg.strokeId, points: msg.points,
+        });
+        broadcastCoopDraw(ws.roomCode, ws, result);
+      } else if (msg.type === 'coopDrawUndo') {
+        const result = rooms.applyCoopDrawUndo(ws.roomCode, ws.playerToken, { strokeId: msg.strokeId });
+        broadcastCoopDrawUndo(ws.roomCode, ws, result);
+      } else if (msg.type === 'coopDrawClear') {
+        rooms.applyCoopDrawClear(ws.roomCode, ws.playerToken);
+        broadcastCoopDrawClear(ws.roomCode, ws);
       }
     } catch {
       // 잘못된 메시지나 방 종료 직후의 레이스 - 조용히 무시
