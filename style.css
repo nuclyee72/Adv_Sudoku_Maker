@@ -681,6 +681,18 @@ html, body {
   color: var(--text-given);
 }
 
+/* 좁은 화면/터치에서 방 코드 복사·닉네임 수정 버튼도 살짝 키운다 */
+@media (max-width: 640px), (pointer: coarse) {
+  .wr-copy-btn {
+    height: 32px;
+  }
+
+  .wr-nickname-edit-btn {
+    width: 30px;
+    height: 30px;
+  }
+}
+
 .wr-nickname-input {
   flex: 1;
   height: 28px;
@@ -1754,6 +1766,7 @@ html, body {
   max-height: 85vh;
   max-height: 85dvh;
   border-radius: 20px 20px 0 0;
+  padding-bottom: max(24px, env(safe-area-inset-bottom, 0px));
   cursor: default;
   transform: translateY(100%);
   /* opacity도 같이 명시해야 한다 - transition은 부분 오버라이드가 안 되는 shorthand라,
