@@ -239,7 +239,7 @@ html, body {
   background: var(--surface-solid);
   color: var(--text-given);
   font-family: 'Outfit', 'Inter', sans-serif;
-  font-size: 15px;
+  font-size: 16px; /* 16px 미만이면 iOS Safari가 포커스 시 페이지를 자동 확대함 */
   font-weight: 600;
 }
 
@@ -436,6 +436,7 @@ html, body {
   gap: 6px;
   max-height: 220px;
   overflow-y: auto;
+  touch-action: pan-y; /* 전역 touch-action:none 아래서도 모양 목록 스크롤은 허용 */
   padding: 10px;
   background: var(--surface-solid);
   border-radius: 12px;
@@ -665,7 +666,7 @@ html, body {
   border: 1px solid var(--text-input);
   border-radius: 8px;
   font-family: 'Outfit', 'Inter', sans-serif;
-  font-size: 13px;
+  font-size: 16px; /* 16px 미만이면 iOS Safari가 포커스 시 페이지를 자동 확대함 */
   font-weight: 600;
 }
 
@@ -1053,6 +1054,7 @@ html, body {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
+  touch-action: pan-y; /* 전역 touch-action:none 아래서도 이 목록만은 세로 터치 스크롤을 허용 */
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -1315,6 +1317,168 @@ html, body {
   cursor: crosshair;
 }
 
+/* ══════════════════════════════════════════════════════════════
+   모바일 세로 레이아웃 — src/ui/layoutMode.js가 붙이는
+   [data-layout="mobile-portrait"]를 기준으로 분기한다(JS가 매기는
+   모드와 항상 일치시키기 위해, 별도의 @media 폭 기준을 CSS에
+   중복해서 두지 않는다). breakpoint 자체는 layoutMode.js의
+   PORTRAIT_MQ: (max-width: 640px) and (orientation: portrait).
+   ══════════════════════════════════════════════════════════════ */
+
+/* 키패드: 화면 하단에 통째로 도킹되는 바 (main.js가 인라인 left/top을 비워두므로
+   여기서 위치를 전담한다) */
+[data-layout="mobile-portrait"] .keypad-panel {
+  left: 0;
+  right: 0;
+  top: auto;
+  bottom: 0;
+}
+
+[data-layout="mobile-portrait"] .kp-panel-body {
+  width: 100%;
+  border-radius: 20px 20px 0 0;
+  max-height: 42vh;
+  max-height: 42dvh; /* dvh 미지원 브라우저는 위 vh 값을 그대로 씀 */
+  overflow-y: auto;
+  touch-action: pan-y;
+  padding: 14px 16px max(14px, env(safe-area-inset-bottom, 0px));
+  cursor: default; /* 모바일에서는 드래그 불가(desktopOnly) - grab 커서는 의미가 없음 */
+}
+
+[data-layout="mobile-portrait"] .kp-body {
+  width: 100%;
+  gap: 10px;
+}
+
+/* 숫자 버튼 9개 + 메모/지우기/실행취소 행(kp-row-actions, grid-column:1/-1)이 같은 grid의
+   자식이라, 9열로 바꾸면 DOM 순서 그대로 "숫자 한 줄 + 그 아래 액션 행"이 자연스럽게 된다. */
+[data-layout="mobile-portrait"] .kp-grid {
+  grid-template-columns: repeat(9, 1fr);
+  gap: 6px;
+}
+
+[data-layout="mobile-portrait"] .kp-btn {
+  height: 46px;
+  font-size: 16px;
+}
+
+[data-layout="mobile-portrait"] .kp-row-actions {
+  gap: 6px;
+}
+
+[data-layout="mobile-portrait"] .kp-row-actions .kp-btn {
+  height: 40px;
+  font-size: 13px;
+}
+
+[data-layout="mobile-portrait"] .kp-reset-all {
+  height: 38px;
+}
+
+[data-layout="mobile-portrait"] .kp-reset-half {
+  min-height: 38px;
+}
+
+/* 드로어: 토글은 바로 위에 작게 떠 있는 버튼으로, 추가 메뉴는 왼쪽 슬라이드 대신
+   화면 하단에서 올라오는 시트로 (플로팅 패널과 동일한 슬라이드 방식, Phase 4 참고) */
+[data-layout="mobile-portrait"] .kp-drawer {
+  position: absolute;
+  left: auto;
+  right: 12px;
+  top: -46px;
+  height: auto;
+}
+
+[data-layout="mobile-portrait"] .kp-toggle {
+  width: 44px;
+  height: 34px;
+  border-radius: 10px;
+}
+
+[data-layout="mobile-portrait"] .kp-extra-menu {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  top: auto;
+  width: 100%;
+  height: auto;
+  max-height: 70vh;
+  max-height: 70dvh;
+  border-radius: 20px 20px 0 0;
+  opacity: 1; /* 보이기/숨기기는 opacity가 아니라 transform(translateY)만으로 처리 */
+  transform: translateY(100%);
+  transition: transform 0.25s ease;
+  z-index: 60;
+}
+
+[data-layout="mobile-portrait"] .keypad-panel.menu-open .kp-extra-menu {
+  /* 데스크톱 전용 .keypad-panel.menu-open .kp-extra-menu{width:180px}보다 특이도를
+     높여서(속성+클래스 3개) width를 다시 100%로 덮어써야 한다 */
+  width: 100%;
+  transform: translateY(0);
+}
+
+[data-layout="mobile-portrait"] .kp-extra-content {
+  width: 100%;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   모바일 가로 레이아웃 — [data-layout="mobile-landscape"]
+   breakpoint는 layoutMode.js의 LANDSCAPE_MQ와 맞춘다:
+   (max-height: 500px) and (orientation: landscape)
+   세로 모드와 달리 폭은 넉넉하고 높이가 빠듯한 게 진짜 제약이라, 데스크톱처럼 키패드를
+   오른쪽에 두되 전체 높이로 도킹한다. 추가 메뉴도 왼쪽 플라이아웃을 그대로 쓴다(공간이
+   있어 세로 모드처럼 시트로 바꿀 필요가 없음 - 별도 규칙 없이 데스크톱 CSS를 상속).
+   ══════════════════════════════════════════════════════════════ */
+
+[data-layout="mobile-landscape"] .keypad-panel {
+  left: auto;
+  right: 0;
+  top: 0;
+  bottom: 0;
+}
+
+[data-layout="mobile-landscape"] .kp-panel-body {
+  width: 196px;
+  height: 100%;
+  max-height: 100%;
+  overflow-y: auto;
+  touch-action: pan-y;
+  border-radius: 20px 0 0 20px;
+  padding: 14px 16px;
+  padding-right: max(14px, env(safe-area-inset-right, 0px));
+  cursor: default; /* 모바일에서는 드래그 불가(desktopOnly) - grab 커서는 의미가 없음 */
+}
+
+[data-layout="mobile-landscape"] .kp-body {
+  width: 100%;
+  gap: 8px;
+}
+
+[data-layout="mobile-landscape"] .kp-grid {
+  gap: 6px;
+}
+
+[data-layout="mobile-landscape"] .kp-btn {
+  height: 40px;
+  font-size: 17px;
+}
+
+[data-layout="mobile-landscape"] .kp-row-actions .kp-btn {
+  height: 36px;
+  font-size: 13px;
+}
+
+[data-layout="mobile-landscape"] .kp-reset-all {
+  height: 34px;
+}
+
+[data-layout="mobile-landscape"] .kp-reset-half {
+  min-height: 34px;
+}
+
 /* ── 완성 토스트 ── */
 .toast {
   position: fixed;
@@ -1458,6 +1622,7 @@ html, body {
   width: 320px;
   max-height: 70vh;
   overflow-y: auto;
+  touch-action: pan-y; /* 전역 touch-action:none 아래서도 패널 내용 스크롤은 허용 */
   padding: 24px;
   border-radius: 20px;
   background: rgba(var(--glass-rgb), 0.92);

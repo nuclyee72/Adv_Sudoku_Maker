@@ -1,8 +1,14 @@
+import { isMobile } from './layoutMode.js';
+
 /**
  * DragPanel.js — 드래그 이동 패널
  *
- * opts.allowSVG  = true  → SVG rect/text 위에서도 드래그 시작 가능
- * opts.noZBoost  = true  → 클릭 시 z-index 변경 안 함
+ * Pointer Events 기반이라 마우스/터치/펜을 같은 코드 경로로 처리한다(그리기 기능과 동일한 패턴).
+ *
+ * opts.allowSVG    = true  → SVG rect/text 위에서도 드래그 시작 가능
+ * opts.noZBoost    = true  → 클릭 시 z-index 변경 안 함
+ * opts.desktopOnly = true  → 모바일 레이아웃(layoutMode.js)에서는 드래그 자체를 비활성화
+ *                            (모바일에서는 CSS가 위치를 전담하는 패널에 사용)
  * opts.clamp     = 'full'    → 패널 전체가 화면 안에 있어야 함 (기본)
  *                  'partial' → 최소 minVisible px 만큼만 화면 안에 있으면 됨
  *                  'none'    → 이동 범위 제한 없음
@@ -15,31 +21,34 @@ export class DragPanel {
    * @param {object}  [opts]
    * @param {boolean} [opts.allowSVG=false]
    * @param {boolean} [opts.noZBoost=false]
+   * @param {boolean} [opts.desktopOnly=false]
    * @param {'full'|'partial'|'none'} [opts.clamp='full']
    * @param {number}  [opts.minVisible=56]
    * @param {HTMLElement|SVGElement} [opts.contentEl]  - 실제 크기를 측정할 요소 (스케일 적용된 내부 요소)
    */
   constructor(panelEl, handleEl, opts = {}) {
-    this.panel      = panelEl;
-    this.handle     = handleEl;
-    this.allowSVG   = opts.allowSVG   ?? false;
-    this.noZBoost   = opts.noZBoost   ?? false;
-    this.clamp      = opts.clamp      ?? 'full';
-    this.minVisible = opts.minVisible ?? 56;
-    this.contentEl  = opts.contentEl  || panelEl;
+    this.panel       = panelEl;
+    this.handle      = handleEl;
+    this.allowSVG    = opts.allowSVG    ?? false;
+    this.noZBoost    = opts.noZBoost    ?? false;
+    this.desktopOnly = opts.desktopOnly ?? false;
+    this.clamp       = opts.clamp       ?? 'full';
+    this.minVisible  = opts.minVisible  ?? 56;
+    this.contentEl   = opts.contentEl   || panelEl;
 
-    this._isDrag      = false;
-    this._startX      = 0;
-    this._startY      = 0;
-    this._offsetX     = 0;
-    this._offsetY     = 0;
-    this._dragEndedAt = 0;
+    this._isDrag          = false;
+    this._startX          = 0;
+    this._startY          = 0;
+    this._offsetX         = 0;
+    this._offsetY         = 0;
+    this._dragEndedAt     = 0;
+    this._activePointerId = null;
 
-    this._onMouseDown = this._onMouseDown.bind(this);
-    this._onMouseMove = this._onMouseMove.bind(this);
-    this._onMouseUp   = this._onMouseUp.bind(this);
+    this._onPointerDown = this._onPointerDown.bind(this);
+    this._onPointerMove = this._onPointerMove.bind(this);
+    this._onPointerUp   = this._onPointerUp.bind(this);
 
-    this.handle.addEventListener('mousedown', this._onMouseDown);
+    this.handle.addEventListener('pointerdown', this._onPointerDown);
   }
 
   /** 이동 가능 범위 계산 */
@@ -79,9 +88,11 @@ export class DragPanel {
     return Date.now() - this._dragEndedAt < 50;
   }
 
-  _onMouseDown(e) {
+  _onPointerDown(e) {
+    if (this._activePointerId !== null) return; // 이미 드래그 중 - 두 번째 포인터(핀치 등)는 무시
     if (e.button !== 0) return;
     if (e.target.closest('button')) return;
+    if (this.desktopOnly && isMobile()) return;
 
     const isSVGEl = ['rect', 'text', 'line', 'g'].includes(e.target.tagName);
     if (!this.allowSVG && isSVGEl) return;
@@ -94,8 +105,16 @@ export class DragPanel {
     this._offsetX = e.clientX - r.left;
     this._offsetY = e.clientY - r.top;
 
-    document.addEventListener('mousemove', this._onMouseMove);
-    document.addEventListener('mouseup',   this._onMouseUp);
+    // 지금은 capture하지 않는다 - allowSVG:true인 핸들(보드)은 아래에 클릭으로 선택되는
+    // 칸(rect)들을 그대로 두고 있는데, 여기서 곧장 setPointerCapture를 부르면 브라우저가
+    // 합성하는 click 이벤트까지 capture한 요소로 재타깃되어 칸의 click 리스너가 아예
+    // 발화하지 않게 된다(순수 클릭까지 "드래그"로 잡아채는 셈). 그래서 실제로 5px 넘게
+    // 움직여 "드래그로 확정"되는 순간(_onPointerMove)에만 capture한다 - 그 전까지는 평범한
+    // pointerup/click으로 끝날 수 있게 놔둔다.
+    this._activePointerId = e.pointerId;
+    this.handle.addEventListener('pointermove',   this._onPointerMove);
+    this.handle.addEventListener('pointerup',     this._onPointerUp);
+    this.handle.addEventListener('pointercancel', this._onPointerUp);
 
     if (!this.noZBoost) {
       window._zTop = (window._zTop || 200) + 1;
@@ -103,13 +122,19 @@ export class DragPanel {
     }
   }
 
-  _onMouseMove(e) {
+  _onPointerMove(e) {
+    if (e.pointerId !== this._activePointerId) return;
+
     const dx = e.clientX - this._startX;
     const dy = e.clientY - this._startY;
 
     if (!this._isDrag && Math.hypot(dx, dy) > 5) {
       this._isDrag = true;
       this.panel.style.cursor = 'grabbing';
+      // setPointerCapture 실패 시(비정상적인 포인터 상태 등) 여기서 던지지만, 이미
+      // _activePointerId가 세팅된 뒤라 다음 시도를 막지는 않는다 - pointerup/cancel이
+      // 정상적으로 붙어있으므로 이번 제스처는 그대로 정리된다.
+      this.handle.setPointerCapture(e.pointerId);
     }
 
     if (!this._isDrag) return;
@@ -117,14 +142,25 @@ export class DragPanel {
     this._applyPos(e.clientX - this._offsetX, e.clientY - this._offsetY);
   }
 
-  _onMouseUp() {
+  _onPointerUp(e) {
+    if (e.pointerId !== this._activePointerId) return;
+
     if (this._isDrag) {
       this._dragEndedAt = Date.now();
       this.panel.style.cursor = '';
     }
     this._isDrag = false;
-    document.removeEventListener('mousemove', this._onMouseMove);
-    document.removeEventListener('mouseup',   this._onMouseUp);
+    this._activePointerId = null;
+    this.handle.removeEventListener('pointermove',   this._onPointerMove);
+    this.handle.removeEventListener('pointerup',     this._onPointerUp);
+    this.handle.removeEventListener('pointercancel', this._onPointerUp);
+  }
+
+  /** 핀치 줌 등 다른 제스처가 시작될 때 진행 중이던 드래그를 즉시 중단 */
+  cancelDrag() {
+    if (this._activePointerId === null) return;
+    try { this.handle.releasePointerCapture(this._activePointerId); } catch {}
+    this._onPointerUp({ pointerId: this._activePointerId });
   }
 
   setPosition(x, y) {

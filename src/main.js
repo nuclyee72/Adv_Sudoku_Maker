@@ -17,6 +17,7 @@ import { solveBoard } from './generator/solveBoard.js';
 import * as roomClient from './net/roomClient.js';
 import { reviveStructures } from './puzzles/reviveStructures.js';
 import { colorForIndex } from './net/playerColors.js';
+import { layoutMode, isMobile, onLayoutChange } from './ui/layoutMode.js';
 
 const svg          = document.getElementById('sudoku-svg');
 const drawOverlay  = document.getElementById('draw-overlay');
@@ -164,11 +165,45 @@ let cachedSolution = null;   // "r,c" -> value Map, 준비 완료 후 캐싱(같
 let solvingPromise = null;   // solveBoard 계산 도중 중복 호출 방지용(정답이 미리 없는 경우에만 씀)
 
 // ── 초기 배치: 화면에 맞게 축소 후 중앙 정렬 ──
+// 세로 모바일은 키패드가 하단 바로, 가로 모바일은 오른쪽에 전체 높이로 고정 도킹되므로(CSS,
+// [data-layout="mobile-portrait"/"mobile-landscape"]), 그 실측 크기만큼 뺀 나머지 영역을
+// 기준으로 맞춘다. 데스크톱은 기존 공식을 그대로 쓴다.
 function fitAndCenterBoard() {
   const naturalW = parseFloat(svg.getAttribute('width'))  || 0;
   const naturalH = parseFloat(svg.getAttribute('height')) || 0;
-  const availW   = window.innerWidth * 0.6;
-  const availH   = window.innerHeight * 0.86;
+
+  if (layoutMode === 'mobile-portrait') {
+    const kpH    = keypadPanel.getBoundingClientRect().height;
+    const availW = window.innerWidth * 0.92;
+    const availH = Math.max(120, window.innerHeight - kpH - 24);
+    const fit = Math.min(1, availW / naturalW, availH / naturalH);
+
+    renderer.setScale(fit);
+
+    const scaledW = naturalW * fit;
+    const scaledH = naturalH * fit;
+    boardPanel.style.left = `${Math.round((window.innerWidth - scaledW) / 2)}px`;
+    boardPanel.style.top  = `${Math.round((window.innerHeight - kpH - scaledH) / 2)}px`;
+    return;
+  }
+
+  if (layoutMode === 'mobile-landscape') {
+    const kpW    = keypadPanel.getBoundingClientRect().width;
+    const availW = Math.max(120, window.innerWidth - kpW - 16);
+    const availH = window.innerHeight * 0.94;
+    const fit = Math.min(1, availW / naturalW, availH / naturalH);
+
+    renderer.setScale(fit);
+
+    const scaledW = naturalW * fit;
+    const scaledH = naturalH * fit;
+    boardPanel.style.left = `${Math.round((window.innerWidth - kpW - scaledW) / 2)}px`;
+    boardPanel.style.top  = `${Math.round((window.innerHeight - scaledH) / 2)}px`;
+    return;
+  }
+
+  const availW = window.innerWidth * 0.6;
+  const availH = window.innerHeight * 0.86;
   const fit = Math.min(1, availW / naturalW, availH / naturalH);
 
   renderer.setScale(fit); // wrapper 히트박스도 함께 축소된 크기로 동기화됨
@@ -178,10 +213,31 @@ function fitAndCenterBoard() {
   boardPanel.style.left = `${Math.round((window.innerWidth - scaledW) / 2 - 130)}px`;
   boardPanel.style.top  = `${Math.round((window.innerHeight - scaledH) / 2)}px`;
 }
-fitAndCenterBoard();
+// 최초 호출(아래)은 #keypad-grid에 실제 버튼이 채워진 뒤(new Keypad(...) 이후)로 미룬다.
+// 그래도 이 시점엔 #game-screen이 아직 랜딩 화면에 가려 display:none이라(싱글/멀티 상관없이
+// enterGame() 전까진 항상 그렇다) 세로 모바일 분기가 재는 키패드 바 높이는 여전히 0으로
+// 나온다(hidden 조상 아래 요소는 getBoundingClientRect가 전부 0) - 화면이 실제로 보이는
+// 순간(enterGame())에 한 번 더 불러서 그때 바로잡는다.
 
-keypadPanel.style.left = `${window.innerWidth - 272}px`;
-keypadPanel.style.top  = `${Math.round(window.innerHeight / 2 - 220)}px`;
+// 모바일에서는 키패드 위치를 CSS([data-layout="mobile-portrait"] 등)가 전담하므로 인라인
+// left/top을 아예 남기지 않는다 - 남아있으면 나중에 데스크톱 폭으로 돌아왔을 때도 그대로
+// 남아 새 CSS와 다툴 수 있다.
+function layoutKeypad() {
+  if (isMobile()) {
+    keypadPanel.style.left = '';
+    keypadPanel.style.top  = '';
+  } else {
+    keypadPanel.style.left = `${window.innerWidth - 272}px`;
+    keypadPanel.style.top  = `${Math.round(window.innerHeight / 2 - 220)}px`;
+  }
+}
+layoutKeypad();
+
+// 레이아웃 모드가 실제로 바뀔 때만(리사이즈/방향전환) 키패드 위치와 보드 맞춤을 다시 계산한다.
+onLayoutChange(() => {
+  layoutKeypad();
+  fitAndCenterBoard();
+});
 
 // ── 드래그 패널 ──
 const boardDrag = new DragPanel(boardPanel, boardPanel, {
@@ -193,9 +249,10 @@ const boardDrag = new DragPanel(boardPanel, boardPanel, {
 });
 renderer.boardDrag = boardDrag; // 드래그 직후 클릭에 의한 오선택 방지
 
-new DragPanel(keypadPanel, keypadPanel, { clamp: 'full' });
+new DragPanel(keypadPanel, keypadPanel, { clamp: 'full', desktopOnly: true });
 
 renderer.setupWheel(boardPanel); // 마우스 커서 기준 부드러운 휠 줌
+renderer.setupPinchZoom(boardPanel); // 두 손가락 핀치 줌 (boardDrag 등록 이후에 호출해야 함 - BoardRenderer.setupPinchZoom 주석 참고)
 renderer.bindExternalDrawSurface(drawOverlay); // 그리기 모드일 때 게임판 밖에서도 그리기를 시작할 수 있게
 
 // ── 추가 메뉴 열기/닫기 (본 키패드는 그대로 두고, 왼쪽에 별도 메뉴가 펼쳐짐) ──
@@ -217,6 +274,7 @@ const keypad = new Keypad(
   () => { if (!boardLocked) toggleNoteMode(); },
   () => { if (!boardLocked) renderer.undo(); },
 );
+fitAndCenterBoard(); // #keypad-grid가 채워진 뒤에야 세로 모바일의 키패드 바 높이를 정확히 잴 수 있음
 
 renderer.onCellSelect = (row, col) => {
   const cell = board.getCell(row, col);
@@ -267,12 +325,12 @@ function openFloatingPanel(panel) {
   openPanel(panel);
 }
 
-new DragPanel(savePanel, savePanel, { clamp: 'partial', minVisible: 40 });
-new DragPanel(helpPanel, helpPanel, { clamp: 'partial', minVisible: 40 });
-new DragPanel(puzzlePanel, puzzlePanel, { clamp: 'partial', minVisible: 40 });
-new DragPanel(generatePanel, generatePanel, { clamp: 'partial', minVisible: 40 });
-new DragPanel(coopVotePanel, coopVotePanel, { clamp: 'partial', minVisible: 40 });
-new DragPanel(answerSheetPanel, answerSheetPanel, { clamp: 'partial', minVisible: 40 });
+new DragPanel(savePanel, savePanel, { clamp: 'partial', minVisible: 40, desktopOnly: true });
+new DragPanel(helpPanel, helpPanel, { clamp: 'partial', minVisible: 40, desktopOnly: true });
+new DragPanel(puzzlePanel, puzzlePanel, { clamp: 'partial', minVisible: 40, desktopOnly: true });
+new DragPanel(generatePanel, generatePanel, { clamp: 'partial', minVisible: 40, desktopOnly: true });
+new DragPanel(coopVotePanel, coopVotePanel, { clamp: 'partial', minVisible: 40, desktopOnly: true });
+new DragPanel(answerSheetPanel, answerSheetPanel, { clamp: 'partial', minVisible: 40, desktopOnly: true });
 
 // ── 확인 모달 (모두 지우기 / 불러오기 / 퍼즐 변경 등 공용) ──
 let pendingConfirmAction = null;
@@ -799,6 +857,10 @@ function hideAllTopScreens() {
 function enterGame() {
   hideAllTopScreens();
   gameScreen.classList.remove('hidden');
+  // 지금까지의 fitAndCenterBoard() 호출은 전부 #game-screen이 display:none인 채로
+  // 일어났을 수 있다(hidden 조상 아래에서는 키패드 바 실측 높이가 항상 0으로 잡힌다) -
+  // 화면이 실제로 보이는 지금 다시 불러서 세로 모바일 맞춤을 바로잡는다.
+  fitAndCenterBoard();
 }
 
 function enterLandingAt(subview) {

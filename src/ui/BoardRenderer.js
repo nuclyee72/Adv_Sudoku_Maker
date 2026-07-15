@@ -571,9 +571,19 @@ export class BoardRenderer {
     handle.setAttribute('fill', 'var(--turntable-mark)');
     handle.setAttribute('stroke', 'var(--cell-bg)');
     handle.setAttribute('stroke-width', '2');
-    handle.style.cursor = 'grab';
-    handle.addEventListener('mousedown', (e) => this._startTurntableDrag(e, structure, centerX, centerY, radius, handle, cross));
+    handle.setAttribute('pointer-events', 'none'); // 입력은 아래의 더 큰 투명 히트 영역(handleHit)이 받음
     this._gTurntableUI.appendChild(handle);
+
+    // 손가락으로도 잡기 쉽도록 보이는 손잡이보다 훨씬 큰 투명 히트 영역을 같은 위치에 겹쳐 둔다.
+    const handleHit = this._el('circle');
+    handleHit.setAttribute('cx', centerX);
+    handleHit.setAttribute('cy', centerY - radius);
+    handleHit.setAttribute('r', 18);
+    handleHit.setAttribute('fill', 'transparent');
+    handleHit.style.cursor = 'grab';
+    handleHit.style.touchAction = 'none';
+    handleHit.addEventListener('pointerdown', (e) => this._startTurntableDrag(e, structure, centerX, centerY, radius, handle, handleHit, cross));
+    this._gTurntableUI.appendChild(handleHit);
   }
 
   _hideTurntableHandle() {
@@ -587,10 +597,13 @@ export class BoardRenderer {
     }
   }
 
-  _startTurntableDrag(e, structure, centerX, centerY, radius, handle, cross) {
+  _startTurntableDrag(e, structure, centerX, centerY, radius, handle, handleHit, cross) {
     if (e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation(); // 보드 패닝(DragPanel)이 같이 시작되지 않도록 차단
+
+    const pointerId = e.pointerId;
+    handleHit.setPointerCapture(pointerId);
 
     const rect = this.svg.getBoundingClientRect();
     const centerClientX = rect.left + centerX * this.scale;
@@ -614,9 +627,10 @@ export class BoardRenderer {
     this.svg.appendChild(dragLayer);
 
     let deltaDeg = 0;
-    handle.style.cursor = 'grabbing';
+    handleHit.style.cursor = 'grabbing';
 
     const onMove = (ev) => {
+      if (ev.pointerId !== pointerId) return;
       const angle = Math.atan2(ev.clientY - centerClientY, ev.clientX - centerClientX);
       deltaDeg = (angle - startAngle) * 180 / Math.PI;
       const rad = deltaDeg * Math.PI / 180;
@@ -632,16 +646,22 @@ export class BoardRenderer {
         el.notesGroup.setAttribute('transform', t);
       }
       const handleAngle = -Math.PI / 2 + rad;
-      handle.setAttribute('cx', centerX + radius * Math.cos(handleAngle));
-      handle.setAttribute('cy', centerY + radius * Math.sin(handleAngle));
+      const hx = centerX + radius * Math.cos(handleAngle);
+      const hy = centerY + radius * Math.sin(handleAngle);
+      handle.setAttribute('cx', hx);
+      handle.setAttribute('cy', hy);
+      handleHit.setAttribute('cx', hx);
+      handleHit.setAttribute('cy', hy);
 
       // 십자 표시는 숫자와 달리 회전량을 그대로 보여주는 용도이므로 실제로 돌린다.
       cross.setAttribute('transform', `rotate(${deltaDeg}, ${centerX}, ${centerY})`);
     };
 
-    const onUp = () => {
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup', onUp);
+    const onUp = (ev) => {
+      if (ev.pointerId !== pointerId) return;
+      handleHit.removeEventListener('pointermove', onMove);
+      handleHit.removeEventListener('pointerup', onUp);
+      handleHit.removeEventListener('pointercancel', onUp);
 
       const gCells = this.svg.querySelector('#g-cells');
       const steps = Math.round(deltaDeg / 90);
@@ -695,8 +715,9 @@ export class BoardRenderer {
       if (this._turntableUIStructure === structure) this._showTurntableHandle(structure);
     };
 
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
+    handleHit.addEventListener('pointermove',   onMove);
+    handleHit.addEventListener('pointerup',     onUp);
+    handleHit.addEventListener('pointercancel', onUp);
   }
 
   // ── 상태 업데이트 ──
@@ -1397,6 +1418,36 @@ export class BoardRenderer {
   }
 
   /**
+   * (clientX, clientY) 화면 좌표가 현재 스케일/패널 위치 기준으로 가리키는 "논리적" 보드 좌표.
+   * 휠 줌과 핀치 줌이 동일한 앵커링 계산을 공유하기 위한 헬퍼.
+   */
+  _logicalPoint(clientX, clientY, boardPanel) {
+    const panelLeft = parseFloat(boardPanel.style.left) || 0;
+    const panelTop  = parseFloat(boardPanel.style.top)  || 0;
+    return {
+      x: (clientX - panelLeft) / this.scale,
+      y: (clientY - panelTop)  / this.scale,
+    };
+  }
+
+  /**
+   * (anchorLogX, anchorLogY) 논리 좌표가 화면상 (anchorClientX, anchorClientY)에 그대로
+   * 남도록 newScale을 적용하고 boardPanel 위치를 재계산한다 - 휠 줌/핀치 줌 공용 수식.
+   */
+  _applyZoomAt(newScale, anchorClientX, anchorClientY, anchorLogX, anchorLogY, boardPanel) {
+    this.setScale(newScale);
+
+    const nx = anchorClientX - anchorLogX * newScale;
+    const ny = anchorClientY - anchorLogY * newScale;
+    const MIN_VIS = 56;
+    const r = this.svg.getBoundingClientRect();
+    const pw = r.width;
+    const ph = r.height;
+    boardPanel.style.left = `${Math.max(-(pw - MIN_VIS), Math.min(nx, window.innerWidth  - MIN_VIS))}px`;
+    boardPanel.style.top  = `${Math.max(-(ph - MIN_VIS), Math.min(ny, window.innerHeight - MIN_VIS))}px`;
+  }
+
+  /**
    * 마우스 커서 기준 부드러운 휠 줌
    * @param {HTMLElement} boardPanel
    */
@@ -1415,27 +1466,14 @@ export class BoardRenderer {
       const diff = targetScale - this.scale;
 
       if (Math.abs(diff) < 0.0003) {
-        applyZoom(targetScale);
+        this._applyZoomAt(targetScale, mouseX, mouseY, curLogX, curLogY, boardPanel);
         rafId = null;
         return;
       }
 
       const newScale = this.scale + diff * LERP;
-      applyZoom(newScale);
+      this._applyZoomAt(newScale, mouseX, mouseY, curLogX, curLogY, boardPanel);
       rafId = requestAnimationFrame(tick);
-    };
-
-    const applyZoom = (newScale) => {
-      this.setScale(newScale);
-
-      const nx = mouseX - curLogX * newScale;
-      const ny = mouseY - curLogY * newScale;
-      const MIN_VIS = 56;
-      const r = this.svg.getBoundingClientRect();
-      const pw = r.width;
-      const ph = r.height;
-      boardPanel.style.left = `${Math.max(-(pw - MIN_VIS), Math.min(nx, window.innerWidth  - MIN_VIS))}px`;
-      boardPanel.style.top  = `${Math.max(-(ph - MIN_VIS), Math.min(ny, window.innerHeight - MIN_VIS))}px`;
     };
 
     wrapper.addEventListener('wheel', (e) => {
@@ -1444,11 +1482,9 @@ export class BoardRenderer {
       mouseX = e.clientX;
       mouseY = e.clientY;
 
-      const panelLeft = parseFloat(boardPanel.style.left) || 0;
-      const panelTop  = parseFloat(boardPanel.style.top)  || 0;
-
-      curLogX = (mouseX - panelLeft) / this.scale;
-      curLogY = (mouseY - panelTop)  / this.scale;
+      const anchor = this._logicalPoint(mouseX, mouseY, boardPanel);
+      curLogX = anchor.x;
+      curLogY = anchor.y;
 
       const delta = e.deltaY * (e.deltaMode === 1 ? 30 : e.deltaMode === 2 ? 900 : 1);
       const factor = Math.pow(0.999, delta);
@@ -1456,6 +1492,57 @@ export class BoardRenderer {
 
       if (!rafId) rafId = requestAnimationFrame(tick);
     }, { passive: false });
+  }
+
+  /**
+   * 두 손가락 핀치 확대/축소. _applyZoomAt()으로 휠 줌과 동일한 앵커링 수식을 공유한다.
+   *
+   * 반드시 boardDrag와 같은 요소(boardPanel)에 리스너를 붙여야 한다 - wrapper(SVG의
+   * 부모이자 boardPanel의 자손)처럼 하위 요소에 붙이면, boardDrag가 setPointerCapture로
+   * 첫 손가락의 이후 이벤트를 boardPanel로 재타깃하는 순간 그 하위 요소는 더 이상 해당
+   * 포인터의 이벤트를 받지 못하게 된다(캡처된 이벤트는 캡처 요소에서만 버블링 시작).
+   *
+   * boardDrag(DragPanel)가 이미 boardPanel에 pointerdown 리스너를 등록해 둔 뒤에
+   * 호출해야 한다 - 같은 요소에서는 리스너가 등록 순서대로 실행되므로, 두 번째 손가락이
+   * 내려왔을 때 boardDrag가 "이미 첫 손가락을 드래그 중"이라 자기 자신은 개입하지 않고
+   * 넘어가 준 다음에야, 여기서 cancelDrag()로 안전하게 핸드오프할 수 있다.
+   * @param {HTMLElement} boardPanel
+   */
+  setupPinchZoom(boardPanel) {
+    const pointers = new Map(); // pointerId -> {x, y}, 터치 포인터만 추적
+    let startDist  = 0;
+    let startScale = 1;
+
+    const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+
+    boardPanel.addEventListener('pointerdown', (e) => {
+      if (e.pointerType !== 'touch') return;
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pointers.size !== 2) return;
+
+      const [a, b] = [...pointers.values()];
+      startDist  = dist(a, b);
+      startScale = this.scale;
+      boardPanel.setPointerCapture(e.pointerId); // 방금 들어온 두 번째 손가락만 직접 캡처
+      this.boardDrag?.cancelDrag(); // 진행 중이던 단일 손가락 팬을 정리하고 핀치로 넘긴다
+    });
+
+    boardPanel.addEventListener('pointermove', (e) => {
+      if (!pointers.has(e.pointerId)) return;
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pointers.size !== 2) return;
+
+      e.preventDefault();
+      const [a, b] = [...pointers.values()];
+      const newScale = Math.max(0.2, Math.min(6, startScale * (dist(a, b) / startDist)));
+      const cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2;
+      const anchor = this._logicalPoint(cx, cy, boardPanel);
+      this._applyZoomAt(newScale, cx, cy, anchor.x, anchor.y, boardPanel);
+    }, { passive: false });
+
+    const release = (e) => { pointers.delete(e.pointerId); };
+    boardPanel.addEventListener('pointerup', release);
+    boardPanel.addEventListener('pointercancel', release);
   }
 
   _celebrate() {
