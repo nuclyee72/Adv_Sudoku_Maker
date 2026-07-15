@@ -233,9 +233,25 @@ function layoutKeypad() {
 }
 layoutKeypad();
 
-// 레이아웃 모드가 실제로 바뀔 때만(리사이즈/방향전환) 키패드 위치와 보드 맞춤을 다시 계산한다.
+// 저장/도움말/퍼즐선택/자동생성/답지/협동중지투표 — 전부 .floating-panel 구조를 공유하고,
+// 데스크톱에서는 openFloatingPanel()이 인라인 left/top으로(최초 1회) 중앙 배치한 뒤 드래그로
+// 옮긴 위치가 남아있을 수 있다. 레이아웃 전환 시 그 인라인 값을 지워야 모바일 시트 CSS가
+// 온전히 위치를 맡고, 나중에 데스크톱으로 돌아왔을 때도 openFloatingPanel()이 새로 중앙
+// 좌표를 계산한다(dataset.positioned도 같이 지워야 "이미 배치됨"으로 오인하지 않는다).
+const FLOATING_PANELS = [savePanel, helpPanel, puzzlePanel, generatePanel, coopVotePanel, answerSheetPanel];
+function clearFloatingPanelPositions() {
+  for (const panel of FLOATING_PANELS) {
+    panel.style.left = '';
+    panel.style.top  = '';
+    delete panel.dataset.positioned;
+  }
+}
+
+// 레이아웃 모드가 실제로 바뀔 때만(리사이즈/방향전환) 키패드/플로팅 패널 위치와 보드 맞춤을
+// 다시 계산한다.
 onLayoutChange(() => {
   layoutKeypad();
+  clearFloatingPanelPositions();
   fitAndCenterBoard();
 });
 
@@ -316,6 +332,9 @@ function isFloatingPanelOpen() {
 
 /** 저장/도움말/퍼즐 선택 패널 — 최초로 열릴 때만 화면 중앙 좌표를 계산해 배치, 이후엔 드래그로 옮긴 위치 유지 */
 function openFloatingPanel(panel) {
+  // 모바일에서는 CSS([data-layout^="mobile"] .floating-panel)가 하단 시트로 위치를
+  // 전담하므로 중앙 좌표 계산을 건너뛴다(desktopOnly라 어차피 드래그도 안 됨).
+  if (isMobile()) { openPanel(panel); return; }
   if (!panel.dataset.positioned) {
     const r = panel.getBoundingClientRect();
     panel.style.left = `${Math.round((window.innerWidth - r.width) / 2)}px`;

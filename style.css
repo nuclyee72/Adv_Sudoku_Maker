@@ -1393,6 +1393,11 @@ html, body {
   width: 44px;
   height: 34px;
   border-radius: 10px;
+  /* 시트(.kp-extra-menu, z-index:60)가 열리면 최대 70vh까지 올라와 토글이 원래 떠 있던
+     자리(바 위 -46px)까지 뒤덮을 수 있다 - static 요소는 z-index가 안 먹으므로 relative로
+     띄워서 시트보다 위에 그려지게 해야, 열려 있을 때도 다시 눌러서 닫을 수 있다. */
+  position: relative;
+  z-index: 61;
 }
 
 [data-layout="mobile-portrait"] .kp-extra-menu {
@@ -1675,6 +1680,37 @@ html, body {
   color: var(--text-given);
 }
 
+/* ── 저장/도움말/퍼즐선택/자동생성/답지/협동중지투표 — 모바일(세로·가로 공통)에서는
+   화면 중앙에 뜨는 카드 대신 하단에서 올라오는 시트로. main.js의 openFloatingPanel()이
+   isMobile()일 때 인라인 left/top 계산을 건너뛰므로 여기서 위치를 전담해도 다투지 않는다.
+   desktopOnly라 드래그도 안 되므로 cursor:grab도 의미가 없다. ── */
+[data-layout^="mobile"] .floating-panel {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  top: auto;
+  width: 100%;
+  max-height: 85vh;
+  max-height: 85dvh;
+  border-radius: 20px 20px 0 0;
+  cursor: default;
+  transform: translateY(100%);
+  /* opacity도 같이 명시해야 한다 - transition은 부분 오버라이드가 안 되는 shorthand라,
+     여기서 transform만 적자면 데스크톱 규칙의 opacity 트랜지션이 통째로 사라져서
+     opacity가 즉시 튀어버리고(특히 닫힐 때 슬라이드가 안 보이게 됨) transform만 애니메이션된다. */
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+[data-layout^="mobile"] .floating-panel.show {
+  transform: translateY(0);
+}
+
+[data-layout^="mobile"] .floating-panel-close {
+  width: 36px;
+  height: 36px;
+}
+
 /* ── 저장/불러오기 슬롯 ── */
 .save-slots {
   display: flex;
@@ -1747,9 +1783,20 @@ html, body {
   width: 620px;
 }
 
+/* #help-panel은 id 선택자라 특이도가 .floating-panel(class)보다 높아서, 모바일 시트
+   규칙이 클래스만으로는 이 width:620px를 못 이긴다 - 여기서 별도로 덮어써야 한다. */
+[data-layout^="mobile"] #help-panel {
+  width: 100%;
+}
+
 .help-columns {
   display: flex;
   gap: 24px;
+}
+
+[data-layout^="mobile"] .help-columns {
+  flex-direction: column;
+  gap: 20px;
 }
 
 .help-col {
