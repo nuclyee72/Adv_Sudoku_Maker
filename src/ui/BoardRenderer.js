@@ -1517,6 +1517,7 @@ export class BoardRenderer {
 
     boardPanel.addEventListener('pointerdown', (e) => {
       if (e.pointerType !== 'touch') return;
+      if (this.drawMode) return; // 그리기 모드에서는 한 손가락이 이미 획을 그리는 용도이므로 핀치줌과 충돌하지 않게 비활성화
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (pointers.size !== 2) return;
 
