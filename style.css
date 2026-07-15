@@ -132,7 +132,11 @@ html, body {
 }
 
 .landing-card {
-  width: 340px;
+  width: min(340px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  touch-action: pan-y; /* 짧은 세로 공간(가로 폰 등)에서 내용이 넘치면 내부 스크롤로 */
   padding: 48px 36px 40px;
   border-radius: 28px;
   background: rgba(var(--glass-rgb), 0.75);
@@ -287,6 +291,17 @@ html, body {
   flex: 0 1 auto;
   height: 36px;
   padding: 0 12px;
+}
+
+/* 좁은 화면/터치(coarse pointer)에서는 최소 터치 타깃(44px)에 가깝게 키운다 */
+@media (max-width: 640px), (pointer: coarse) {
+  .mode-toggle-btn {
+    height: 44px;
+  }
+
+  .mode-toggle.wrap .mode-toggle-btn {
+    height: 40px;
+  }
 }
 
 /* ── 요소별 없음/보통/많음 슬라이더 (자동 생성 패널) ──
@@ -537,7 +552,7 @@ html, body {
 
 /* ── 대기실 ── */
 .waiting-room-screen .waiting-room-card {
-  width: 560px;
+  width: min(560px, calc(100vw - 32px));
 }
 
 .wr-code-row {
@@ -592,6 +607,13 @@ html, body {
 
 .wr-body[hidden] {
   display: none;
+}
+
+@media (max-width: 640px) {
+  .wr-body {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
 }
 
 .wr-col {
@@ -794,7 +816,7 @@ html, body {
 
 .battle-countdown-number {
   font-family: 'Outfit', 'Inter', sans-serif;
-  font-size: 140px;
+  font-size: clamp(72px, 24vw, 140px);
   font-weight: 700;
   color: var(--text-input);
   text-shadow: 0 16px 40px rgba(20, 24, 40, 0.28);
@@ -818,6 +840,40 @@ html, body {
 
 .battle-leaderboard.hidden {
   display: none;
+}
+
+@media (max-width: 640px) and (orientation: portrait) {
+  .battle-leaderboard {
+    top: max(12px, env(safe-area-inset-top, 0px));
+    right: max(12px, env(safe-area-inset-right, 0px));
+    width: 160px;
+    padding: 12px;
+    max-height: 50vh;
+    max-height: 50dvh;
+    overflow-y: auto;
+    touch-action: pan-y;
+  }
+}
+
+@media (max-height: 500px) and (orientation: landscape) {
+  .battle-leaderboard {
+    /* 이 모드에서는 키패드가 오른쪽 가장자리 전체 높이(196px)를 차지하므로,
+       리더보드를 반대편(왼쪽)으로 옮겨야 겹치지 않는다 */
+    left: max(12px, env(safe-area-inset-left, 0px));
+    right: auto;
+    top: max(8px, env(safe-area-inset-top, 0px));
+    width: 140px;
+    padding: 8px 10px;
+    max-height: 80vh;
+    max-height: 80dvh;
+    overflow-y: auto;
+    touch-action: pan-y;
+  }
+
+  .battle-leaderboard .battle-leaderboard-row {
+    height: 30px;
+    font-size: 12px;
+  }
 }
 
 .leaderboard-room-code {
@@ -927,7 +983,7 @@ html, body {
 }
 
 .battle-ended-card {
-  width: 340px;
+  width: min(340px, calc(100vw - 32px));
 }
 
 .battle-ended-card .battle-leaderboard-list {
@@ -1529,7 +1585,11 @@ html, body {
 }
 
 .modal-card {
-  width: 300px;
+  width: min(300px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  touch-action: pan-y;
   padding: 28px 24px 20px;
   border-radius: 20px;
   background: rgba(var(--glass-rgb), 0.92);
