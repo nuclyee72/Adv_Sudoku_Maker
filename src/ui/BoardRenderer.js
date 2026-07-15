@@ -11,6 +11,11 @@ const THIN       = 1;
 const THICK      = 3;
 const GRID_THICK = 6; // 9x9 판 전체 테두리 — 3x3 박스 테두리(THICK)보다 두껍게
 const DRAW_WIDTH = 3.5; // 그리기 펜 굵기
+// 손가락 터치는 접촉면이 넓어서 실제 터치 좌표 그대로 그리면 손가락에 잉크가 가려져
+// "터치한 곳과 그려지는 곳이 다르다"고 느껴진다 — 손가락 위로 살짝 띄워서 그리면(다른 드로잉
+// 앱들의 통상적인 처리) 항상 손끝 바로 위에 획이 보인다. 화면 픽셀 단위라 확대해도 항상 같은
+// 시각적 거리만큼 떠 보인다. 마우스/펜은 접촉면 문제가 없으므로 오프셋을 주지 않는다.
+const TOUCH_DRAW_Y_OFFSET = 24;
 
 export class BoardRenderer {
   /**
@@ -163,12 +168,15 @@ export class BoardRenderer {
     if (!on && this._activeStroke) this._endStroke();
   }
 
-  _svgPointFromClient(clientX, clientY) {
+  _svgPointFromClient(clientX, clientY, pointerType) {
     const ctm = this.svg.getScreenCTM();
     if (!ctm) return { x: 0, y: 0 };
     const pt = this.svg.createSVGPoint();
     pt.x = clientX;
-    pt.y = clientY;
+    // 화면(스크린) 좌표 단계에서 오프셋을 적용해야 확대 배율과 무관하게 항상 같은
+    // 시각적 거리만큼 손끝 위에 떠 보인다 - SVG 좌표 변환 뒤에 더하면 확대할수록 오프셋이
+    // 점점 작아 보인다.
+    pt.y = pointerType === 'touch' ? clientY - TOUCH_DRAW_Y_OFFSET : clientY;
     const local = pt.matrixTransform(ctm.inverse());
     return { x: local.x, y: local.y };
   }
@@ -202,7 +210,7 @@ export class BoardRenderer {
       this._activePointerId = e.pointerId;
       this._activeStroke = {
         id: `s${Date.now()}${Math.random().toString(36).slice(2, 8)}`,
-        points: [this._svgPointFromClient(e.clientX, e.clientY)],
+        points: [this._svgPointFromClient(e.clientX, e.clientY, e.pointerType)],
         color: this.drawColor,
         playerId: this.myPlayerId,
       };
@@ -210,7 +218,7 @@ export class BoardRenderer {
     });
     rect.addEventListener('pointermove', (e) => {
       if (!this._activeStroke || e.pointerId !== this._activePointerId) return;
-      const pt = this._svgPointFromClient(e.clientX, e.clientY);
+      const pt = this._svgPointFromClient(e.clientX, e.clientY, e.pointerType);
       const pts = this._activeStroke.points;
       const last = pts[pts.length - 1];
       if (Math.hypot(pt.x - last.x, pt.y - last.y) < 1.5) return; // 점이 너무 촘촘히 쌓이지 않게
